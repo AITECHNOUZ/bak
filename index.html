@@ -57,7 +57,8 @@ button:disabled{opacity:.45;cursor:not-allowed}button.sel{border-color:var(--ac)
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getDatabase, ref, onValue, get, set, push, serverTimestamp, off } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { getDatabase, ref, onValue, get, set, push, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyC-Cm4rAlbDmoDs3lpYyRTTOVRlRwbPvMw",
@@ -72,6 +73,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+const auth = getAuth(app);
 const $ = id => document.getElementById(id);
 
 const DEVICE_ID = "SW001";
@@ -152,35 +154,82 @@ $("authForm").addEventListener("submit", async (event) => {
 
   err("");
   $("loginBtn").disabled = true;
-  try {
-    const userRef = ref(db, "users/" + u);
-    const userSnap = await get(userRef);
 
-    if (mode === "login") {
-      if (!userSnap.exists()) return err("Karta topilmadi. Avval ro'yxatdan o'ting");
-      const userData = userSnap.val();
-      if (!userData.pin) return err("PIN ro'yxati noto'g'ri. Administratorga murojaat qiling");
-      if (userData.pin !== p) return err("PIN xato");
-      uid = u; pin = p; store.set("sw_uid", u); startApp();
-    } else {
-      if (userSnap.exists()) return err("Bu karta allaqachon ro'yxatdan o'tgan. Kirish ni tanlang");
+  // Firebase Auth paroli uchun ichki parol hosil qilinadi.
+  // Foydalanuvchi PIN sifatida odatdagi 4-6 raqamli PINni ishlatadi.
+  const authEmail = u.toLowerCase() + "@smartwater.app";
+  const authPassword = "SW-" + p + "-water!";
+
+  try {
+    if (mode === "reg") {
+      // Faqat qurilmada ko'rilgan karta ro'yxatdan o'tishi mumkin.
       const pc = await get(ref(db, "pending_cards/" + u));
-      if (!pc.exists()) return err("Avval kartani qurilmaga tuting, so'ng UID ni tekshiring");
+      if (!pc.exists()) {
+        return err("Avval kartani qurilmaga tuting, so'ng UID ni tekshiring");
+      }
+
+      try {
+        await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+      } catch (e) {
+        if (e && e.code === "auth/email-already-in-use") {
+          return err("Bu karta allaqachon ro'yxatdan o'tgan. Kirish ni tanlang");
+        }
+        throw e;
+      }
+
+      const userRef = ref(db, "users/" + u);
       await set(userRef, { balance_ml: 0, pin: p });
-      uid = u; pin = p; store.set("sw_uid", u); startApp();
+
+      uid = u;
+      pin = p;
+      store.set("sw_uid", u);
+      startApp();
       setSt("Ro'yxatdan o'tdingiz. Balans 0 L: to'ldirish uchun administratorga murojaat qiling", "var(--ok)");
+
+    } else {
+      await signInWithEmailAndPassword(auth, authEmail, authPassword);
+
+      const userSnap = await get(ref(db, "users/" + u));
+      if (!userSnap.exists()) {
+        await signOut(auth);
+        return err("Karta uchun foydalanuvchi ma'lumoti topilmadi");
+      }
+
+      const userData = userSnap.val();
+      if (!userData.pin) {
+        await signOut(auth);
+        return err("PIN ro'yxati noto'g'ri. Administratorga murojaat qiling");
+      }
+
+      uid = u;
+      pin = p;
+      store.set("sw_uid", u);
+      startApp();
     }
   } catch (e) {
-    console.error(e);
-    err(mode === "reg" ? "Ro'yxatdan o'tib bo'lmadi" : "Ulanish xatosi");
+    console.error("SMART WATER auth error:", e);
+    const code = e && e.code ? e.code : "";
+
+    if (code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found") {
+      err("UID yoki PIN xato");
+    } else if (code === "auth/operation-not-allowed") {
+      err("Firebase Authentication > Sign-in method bo'limida Email/Password ni yoqing");
+    } else if (code === "PERMISSION_DENIED" || code === "permission-denied") {
+      err("Firebase Rules ruxsat bermadi. Yangilangan Rules ni joylang");
+    } else if (code === "auth/too-many-requests") {
+      err("Juda ko'p urinish. Bir ozdan keyin qayta urinib ko'ring");
+    } else {
+      err((mode === "reg" ? "Ro'yxatdan o'tib bo'lmadi: " : "Kirish xatosi: ") + (e && e.message ? e.message : "noma'lum xato"));
+    }
   } finally {
     $("loginBtn").disabled = false;
   }
 });
 
-$("out").onclick = () => {
+$("out").onclick = async () => {
   offs.forEach(f => f());
   offs = [];
+  try { await signOut(auth); } catch(e) { console.error(e); }
   uid = null; pin = ""; store.del("sw_uid");
   $("app").classList.add("hide"); $("login").classList.remove("hide"); $("pin").value = "";
   $("uid").value = ""; $("pin2").value = ""; $("lerr").textContent = "";
@@ -257,7 +306,23 @@ function watch(refNode, v){
   }, EXPIRE_MS + 5000);
 }
 
-const saved = store.get("sw_uid"); if (saved) $("uid").value = saved;
+const saved = store.get("sw_uid");
+if (saved) $("uid").value = saved;
+
+onAuthStateChanged(auth, user => {
+  if (!user) return;
+
+  const email = (user.email || "").toLowerCase();
+  const suffix = "@smartwater.app";
+  if (!email.endsWith(suffix)) return;
+
+  const restoredUid = email.slice(0, -suffix.length).toUpperCase();
+  if (!/^[0-9A-F]{8}$/.test(restoredUid)) return;
+
+  uid = restoredUid;
+  $("uid").value = restoredUid;
+  startApp();
+});
 </script>
 </body>
 </html>
