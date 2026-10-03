@@ -294,16 +294,35 @@ async function resumeActiveCommand(){
 
   try {
     const s = await get(ref(db, "commands/" + id));
-    if (!s.exists()) { store.del(COMMAND_KEY); return; }
+    if (!s.exists()) { store.del(COMMAND_KEY); activeCmdId = null; busy = false; updateGo(); return; }
     const c = s.val() || {};
-    if (String(c.user_id || "") !== uid) { store.del(COMMAND_KEY); return; }
+    if (String(c.user_id || "") !== uid) { store.del(COMMAND_KEY); activeCmdId = null; busy = false; updateGo(); return; }
+
+    if (["completed","rejected","expired"].includes(c.status)) {
+      store.del(COMMAND_KEY);
+      activeCmdId = null;
+      busy = false;
+      updateGo();
+      return;
+    }
 
     activeCmdId = id;
     cmdRef = ref(db, "commands/" + id);
-    busy = !["completed","rejected","expired"].includes(c.status);
+    busy = true;
     updateGo();
     watch(cmdRef, Number(c.volume || 0), id);
   } catch (e) {
+    // A stale command from a previous session must never block the UI.
+    // With strict RTDB Rules the current user may legitimately lose access
+    // to an old command after it is finalized, so clear only the local key.
+    if (e && (e.code === "PERMISSION_DENIED" || e.code === "permission-denied")) {
+      store.del(COMMAND_KEY);
+      activeCmdId = null;
+      busy = false;
+      updateGo();
+      setSt("Tayyor");
+      return;
+    }
     console.error("SMART WATER command resume:", e);
   }
 }
