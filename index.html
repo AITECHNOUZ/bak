@@ -251,11 +251,20 @@ $("out").onclick = async () => {
 function startApp(){
   $("login").classList.add("hide"); $("app").classList.remove("hide");
   $("who").textContent = uid; setSt("Tayyor");
+
+  // Bir foydalanuvchi uchun eski balans listenerlarini takroran ulab yubormaymiz.
+  offs.forEach(f => f());
+  offs = [];
+
   const r = ref(db, "users/" + uid + "/balance_ml");
   const unsub = onValue(r, s => {
-    balL = (s.val() || 0) / 1000;
+    const ml = Number(s.val());
+    balL = Number.isFinite(ml) ? ml / 1000 : 0;
     $("bal").textContent = balL.toFixed(1) + " L";
     updateGo();
+  }, e => {
+    console.error("SMART WATER balance listener:", e);
+    setSt("Balansni Firebase'dan o'qib bo'lmadi", "var(--er)");
   });
   offs.push(unsub);
 }
@@ -274,6 +283,10 @@ $("go").onclick = async () => {
     const ownerSnap = await get(ref(db, "users/" + uid + "/auth_uid"));
     if (!ownerSnap.exists() || ownerSnap.val() !== auth.currentUser.uid) {
       throw new Error("USER_AUTH_BINDING_MISSING");
+    }
+
+    if (!/^[0-9]{4,6}$/.test(pin)) {
+      throw new Error("PIN_SESSION_MISSING");
     }
 
     cmdRef = push(ref(db, "commands"));
@@ -295,6 +308,8 @@ $("go").onclick = async () => {
       setSt("Sessiya tugagan. Qayta kiring.", "var(--er)");
     } else if (e && e.message === "USER_AUTH_BINDING_MISSING") {
       setSt("Foydalanuvchi sessiyasi bog'lanmagan. Chiqib, qayta kiring.", "var(--er)");
+    } else if (e && e.message === "PIN_SESSION_MISSING") {
+      setSt("PIN sessiyada topilmadi. Qayta kiring.", "var(--er)");
     } else if (e && (e.code === "PERMISSION_DENIED" || e.code === "permission-denied")) {
       setSt("Firebase Rules buyruqqa ruxsat bermadi.", "var(--er)");
     } else {
@@ -342,7 +357,10 @@ function watch(refNode, v){
 const saved = store.get("sw_uid");
 if (saved) $("uid").value = saved;
 
-onAuthStateChanged(auth, user => {
+let restoringSession = false;
+
+async function restoreAuthSession(user) {
+  if (restoringSession) return;
   if (!user) return;
 
   const email = (user.email || "").toLowerCase();
@@ -352,9 +370,52 @@ onAuthStateChanged(auth, user => {
   const restoredUid = email.slice(0, -suffix.length).toUpperCase();
   if (!/^[0-9A-F]{8}$/.test(restoredUid)) return;
 
-  uid = restoredUid;
-  $("uid").value = restoredUid;
-  startApp();
+  // Agar login jarayonining o'zi allaqachon pinni o'rnatgan bo'lsa,
+  // qayta o'qib, ikkinchi listener yaratmaymiz.
+  if (uid === restoredUid && pin) {
+    if ($("app").classList.contains("hide")) startApp();
+    return;
+  }
+
+  restoringSession = true;
+  try {
+    const snap = await get(ref(db, "users/" + restoredUid));
+    if (!snap.exists()) {
+      console.warn("SMART WATER: Auth bor, lekin RTDB user topilmadi:", restoredUid);
+      return;
+    }
+
+    const data = snap.val() || {};
+    const savedPin = String(data.pin || "");
+
+    if (!/^[0-9]{4,6}$/.test(savedPin)) {
+      console.warn("SMART WATER: RTDB PIN noto'g'ri:", restoredUid);
+      return;
+    }
+
+    uid = restoredUid;
+    pin = savedPin;
+    $("uid").value = restoredUid;
+    $("pin").value = savedPin;
+    store.set("sw_uid", restoredUid);
+
+    // Eski foydalanuvchilar uchun Auth UID bog'lanishini bir marta yaratamiz.
+    if (!data.auth_uid) {
+      await set(ref(db, "users/" + restoredUid + "/auth_uid"), user.uid);
+    }
+
+    startApp();
+  } catch (e) {
+    console.error("SMART WATER session restore error:", e);
+    setSt("Sessiyani tiklab bo'lmadi. Qayta kiring.", "var(--er)");
+  } finally {
+    restoringSession = false;
+  }
+}
+
+onAuthStateChanged(auth, user => {
+  if (!user) return;
+  restoreAuthSession(user);
 });
 </script>
 </body>
