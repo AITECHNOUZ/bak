@@ -92,8 +92,25 @@ const store = {
 
 const setSt = (t, c) => { $("st").textContent = t; $("st").style.color = c || "var(--tx)"; };
 
-onValue(ref(db, ".info/serverTimeOffset"), s => offset = s.val() || 0);
-onValue(ref(db, "devices/" + DEVICE_ID + "/last_seen"), s => { lastSeen = s.val() || 0; renderDev(); });
+onValue(ref(db, ".info/serverTimeOffset"), s => {
+  const n = Number(s.val());
+  offset = Number.isFinite(n) ? n : 0;
+  renderDev();
+}, err => console.error("SMART WATER server offset:", err));
+
+onValue(
+  ref(db, "devices/" + DEVICE_ID + "/last_seen"),
+  s => {
+    const n = Number(s.val());
+    lastSeen = Number.isFinite(n) && n > 0 ? n : 0;
+    renderDev();
+  },
+  err => {
+    console.error("SMART WATER device status read error:", err);
+    lastSeen = 0;
+    renderDev();
+  }
+);
 setInterval(renderDev, 3000);
 
 function renderDev(){
