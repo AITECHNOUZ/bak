@@ -1,94 +1,338 @@
-{
-  "rules": {
-    ".read": "auth != null && root.child('admins/' + auth.uid).val() === true",
-    ".write": "auth != null && root.child('admins/' + auth.uid).val() === true",
-    "users": {
-      "$uid": {
-        ".read": "auth != null && (root.child('device_uids/' + auth.uid).val() === true || auth.token.email === $uid.toLowerCase() + '@smartwater.app')",
-        ".write": "auth != null && (root.child('device_uids/' + auth.uid).val() === true || (auth.token.email === $uid.toLowerCase() + '@smartwater.app' && ((!data.exists() && root.child('pending_cards/' + $uid).exists()) || data.exists())))",
-        ".validate": "newData.hasChildren(['balance_ml', 'pin'])",
-        "balance_ml": {
-          ".read": "auth != null && (root.child('device_uids/' + auth.uid).val() === true || auth.token.email === $uid.toLowerCase() + '@smartwater.app')",
-          ".validate": "newData.isNumber() && (newData.val() == 0 || (auth != null && (root.child('admins/' + auth.uid).val() === true || root.child('device_uids/' + auth.uid).val() === true)))"
-        },
-        "pin": {
-          ".validate": "newData.isString() && newData.val().matches(/^[0-9]{4,6}$/)"
-        },
-        "name": {
-          ".validate": "newData.isString() && newData.val().length <= 40"
-        },
-        "blocked": {
-          ".validate": "newData.isBoolean()"
-        },
-        "$other": {
-          ".validate": false
-        }
-      }
-    },
-    "pending_cards": {
-      "$uid": {
-        ".read": true,
-        ".write": "auth != null && root.child('device_uids/' + auth.uid).val() === true"
-      }
-    },
-    "devices": {
-      "$id": {
-        "last_seen": {
-          ".read": true,
-          ".write": "auth != null && root.child('device_uids/' + auth.uid).val() === true"
-        }
-      }
-    },
-    "tx": {
-      ".indexOn": [
-        "ts"
-      ],
-      "$id": {
-        ".write": "auth != null && root.child('device_uids/' + auth.uid).val() === true",
-        ".validate": "newData.hasChildren(['user_id', 'ml', 'src', 'ts'])"
-      }
-    },
-    "commands": {
-      ".indexOn": [
-        "status",
-        "created_at"
-      ],
-      ".read": "auth != null && root.child('device_uids/' + auth.uid).val() === true",
-      "$id": {
-        ".read": true,
-        ".write": "(!data.exists() && newData.exists() && auth != null && auth.token.email === newData.child('user_id').val().toLowerCase() + '@smartwater.app' && newData.child('device_id').val() === 'SW001' && newData.child('pin').val() === root.child('users').child(newData.child('user_id').val()).child('pin').val()) || (auth != null && root.child('device_uids/' + auth.uid).val() === true)",
-        ".validate": "newData.hasChildren(['device_id', 'user_id', 'volume', 'status', 'created_at'])",
-        "device_id": {
-          ".validate": "newData.isString() && newData.val().length <= 16"
-        },
-        "user_id": {
-          ".validate": "newData.isString() && newData.val().length <= 16"
-        },
-        "pin": {
-          ".validate": "newData.isString() && newData.val().length <= 8"
-        },
-        "volume": {
-          ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() <= 5"
-        },
-        "status": {
-          ".validate": "newData.isString() && (newData.val() == 'pending' || (auth != null && root.child('device_uids/' + auth.uid).val() === true))"
-        },
-        "created_at": {
-          ".validate": "!data.exists() ? newData.val() == now : newData.val() == data.val()"
-        },
-        "duration_ms": {
-          ".validate": "newData.isNumber()"
-        },
-        "delivered_ml": {
-          ".validate": "newData.isNumber()"
-        },
-        "reason": {
-          ".validate": "newData.isString() && newData.val().length <= 60"
-        },
-        "$other": {
-          ".validate": false
-        }
-      }
-    }
-  }
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SMART WATER</title>
+<style>
+:root{--bg:#f4f7fb;--card:#fff;--tx:#12202f;--mut:#6b7a8c;--ac:#0a7cff;--ok:#12a150;--er:#d93025;--bd:#dbe3ec}
+@media(prefers-color-scheme:dark){:root{--bg:#0d141c;--card:#16202b;--tx:#e8eef5;--mut:#8b9bad;--bd:#26364a}}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--tx);display:flex;justify-content:center;padding:16px}
+.card{width:100%;max-width:400px;background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:20px}
+h1{font-size:18px;margin:0 0 4px;letter-spacing:1px}.mut{color:var(--mut);font-size:13px}
+input{width:100%;padding:12px;margin:6px 0;border:1px solid var(--bd);border-radius:10px;background:transparent;color:var(--tx);font-size:16px}
+button{padding:12px;border:1px solid var(--bd);border-radius:10px;background:transparent;color:var(--tx);font-size:16px;cursor:pointer}
+button.main{width:100%;background:var(--ac);color:#fff;border:0;margin-top:10px;font-weight:600}
+button:disabled{opacity:.45;cursor:not-allowed}button.sel{border-color:var(--ac);color:var(--ac)}
+.row{display:flex;gap:8px;margin:10px 0}.row button{flex:1}
+.bal{font-size:36px;font-weight:700;text-align:center;margin:14px 0 4px}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--er);margin-right:6px}.dot.on{background:var(--ok)}
+.bar{height:12px;background:var(--bd);border-radius:6px;overflow:hidden;margin:8px 0}.bar i{display:block;height:100%;width:0;background:var(--ac)}
+#st{margin-top:12px;min-height:22px;font-weight:600}.hide{display:none}.link{background:none;border:0;color:var(--mut);font-size:13px;padding:4px 0}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>SMART WATER</h1>
+  <div class="mut"><span class="dot" id="dot"></span><span id="dev">Qurilma tekshirilmoqda…</span></div>
+
+  <div id="login">
+    <form id="authForm" novalidate>
+      <div class="row">
+        <button id="tabL" class="sel" type="button">Kirish</button><button id="tabR" type="button">Ro'yxatdan o'tish</button>
+      </div>
+      <p class="mut" id="hint">Karta raqami (UID) va PIN kiriting</p>
+      <input id="uid" placeholder="Karta UID (masalan A1B2C3D4)" autocapitalize="characters" autocomplete="off">
+      <input id="pin" placeholder="PIN (4-6 raqam)" type="password" inputmode="numeric" autocomplete="off">
+      <input id="pin2" class="hide" placeholder="PINni takrorlang" type="password" inputmode="numeric" autocomplete="off">
+      <button class="main" id="loginBtn" type="submit">Kirish</button>
+      <div id="lerr" class="mut" style="color:var(--er);margin-top:8px"></div>
+    </form>
+  </div>
+
+  <div id="app" class="hide">
+    <div class="bal" id="bal">— L</div>
+    <div class="mut" style="text-align:center">Balans (<span id="who"></span>)</div>
+    <p style="margin:16px 0 0">Qancha suv olasiz?</p>
+    <div class="row" id="presets">
+      <button data-v="0.2" type="button">0.2 L</button><button data-v="0.5" type="button">0.5 L</button><button data-v="1" type="button">1 L</button><button data-v="2" type="button">2 L</button>
+    </div>
+    <input id="custom" type="number" min="0.1" max="5" step="0.1" inputmode="decimal" placeholder="Boshqa: ___ L">
+    <button class="main" id="go" type="button">SUV OLISH</button>
+    <div class="bar hide" id="bar"><i id="fill"></i></div>
+    <div id="st"></div>
+    <button class="link" id="out" type="button">Chiqish</button>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, onValue, get, set, push, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyC-Cm4rAlbDmoDs3lpYyRTTOVRlRwbPvMw",
+  authDomain: "bakk-9ff13.firebaseapp.com",
+  databaseURL: "https://bakk-9ff13-default-rtdb.firebaseio.com",
+  projectId: "bakk-9ff13",
+  storageBucket: "bakk-9ff13.firebasestorage.app",
+  messagingSenderId: "454857289201",
+  appId: "1:454857289201:web:62bf1b0128bc3189dc2850",
+  measurementId: "G-KNE0NX3VSC"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const auth = getAuth(app);
+const $ = id => document.getElementById(id);
+
+const DEVICE_ID = "SW001";
+const MAX_L = 5;
+const EXPIRE_MS = 120000;
+
+let uid = null, pin = "", balL = 0, offset = 0, lastSeen = 0, busy = false, vol = 0;
+let offs = [], cmdRef = null, tick = null;
+
+const store = {
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} },
+  del(k){ try{ localStorage.removeItem(k); }catch(e){} }
+};
+
+const setSt = (t, c) => { $("st").textContent = t; $("st").style.color = c || "var(--tx)"; };
+
+onValue(ref(db, ".info/serverTimeOffset"), s => offset = s.val() || 0);
+onValue(ref(db, "devices/" + DEVICE_ID + "/last_seen"), s => { lastSeen = s.val() || 0; renderDev(); });
+setInterval(renderDev, 3000);
+
+function renderDev(){
+  const on = lastSeen && (Date.now() + offset - lastSeen) < 25000;
+  $("dot").className = "dot" + (on ? " on" : "");
+  $("dev").textContent = on ? "Qurilma online" : "Qurilma offline";
+  updateGo();
 }
+
+function updateGo(){
+  const online = $("dot").classList.contains("on");
+  const v = getVol();
+  $("go").disabled = busy || !online || !(v > 0 && v <= Math.min(MAX_L, balL));
+}
+function getVol(){
+  const c = parseFloat($("custom").value);
+  if (c > 0) return Math.round(c * 10) / 10;
+  return vol;
+}
+
+document.querySelectorAll("#presets button").forEach(b => b.onclick = () => {
+  vol = +b.dataset.v; $("custom").value = "";
+  document.querySelectorAll("#presets button").forEach(x => x.classList.toggle("sel", x === b));
+  updateGo();
+});
+$("custom").oninput = () => {
+  vol = 0; document.querySelectorAll("#presets button").forEach(x => x.classList.remove("sel")); updateGo();
+};
+
+let mode = "login";
+function setMode(m){
+  mode = m; $("pin2").classList.toggle("hide", m !== "reg");
+  $("loginBtn").textContent = m === "reg" ? "Ro'yxatdan o'tish" : "Kirish";
+  $("tabL").classList.toggle("sel", m === "login"); $("tabR").classList.toggle("sel", m === "reg");
+  $("hint").textContent = m === "reg"
+    ? "Avval kartani qurilmaga tuting: UID displeyda chiqadi. Shu UID va o'zingiz o'ylagan PIN ni kiriting."
+    : "Karta raqami (UID) va PIN kiriting";
+  $("lerr").textContent = "";
+}
+$("tabL").onclick = () => setMode("login");
+$("tabR").onclick = () => setMode("reg");
+
+$("authForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const u = $("uid").value.trim().toUpperCase();
+  const p = $("pin").value.trim();
+  const err = t => $("lerr").textContent = t;
+
+  if (!u) return err("UID kiriting");
+  if (!/^[0-9A-F]{8}$/.test(u)) return err("UID 8 ta belgi (0-9, A-F) bo'lishi kerak");
+  if (!p) return err("PIN kiriting");
+  if (!/^[0-9]{4,6}$/.test(p)) return err("PIN 4-6 ta raqam bo'lishi kerak");
+
+  if (mode === "reg") {
+    const p2 = $("pin2").value.trim();
+    if (!p2) return err("PINni takrorlang");
+    if (p !== p2) return err("PIN lar mos kelmadi");
+  }
+
+  err("");
+  $("loginBtn").disabled = true;
+
+  // Firebase Auth paroli uchun ichki parol hosil qilinadi.
+  // Foydalanuvchi PIN sifatida odatdagi 4-6 raqamli PINni ishlatadi.
+  const authEmail = u.toLowerCase() + "@smartwater.app";
+  const authPassword = "SW-" + p + "-water!";
+
+  try {
+    if (mode === "reg") {
+      // Faqat qurilmada ko'rilgan karta ro'yxatdan o'tishi mumkin.
+      const pc = await get(ref(db, "pending_cards/" + u));
+      if (!pc.exists()) {
+        return err("Avval kartani qurilmaga tuting, so'ng UID ni tekshiring");
+      }
+
+      try {
+        await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+      } catch (e) {
+        if (e && e.code === "auth/email-already-in-use") {
+          // Oldingi urinishda Auth account yaratilgan, lekin /users/<UID>
+          // yozuvi Rules sababli yozilmay qolgan bo'lishi mumkin.
+          // Shu holatni avtomatik tiklaymiz.
+          await signInWithEmailAndPassword(auth, authEmail, authPassword);
+        } else {
+          throw e;
+        }
+      }
+
+      const userRef = ref(db, "users/" + u);
+      const currentUserSnap = await get(userRef);
+
+      if (currentUserSnap.exists()) {
+        return err("Bu karta allaqachon ro'yxatdan o'tgan. Kirish ni tanlang");
+      }
+
+      await set(userRef, { balance_ml: 0, pin: p });
+
+      uid = u;
+      pin = p;
+      store.set("sw_uid", u);
+      startApp();
+      setSt("Ro'yxatdan o'tdingiz. Balans 0 L: to'ldirish uchun administratorga murojaat qiling", "var(--ok)");
+
+    } else {
+      await signInWithEmailAndPassword(auth, authEmail, authPassword);
+
+      const userSnap = await get(ref(db, "users/" + u));
+      if (!userSnap.exists()) {
+        await signOut(auth);
+        return err("Karta uchun foydalanuvchi ma'lumoti topilmadi");
+      }
+
+      const userData = userSnap.val();
+      if (!userData.pin) {
+        await signOut(auth);
+        return err("PIN ro'yxati noto'g'ri. Administratorga murojaat qiling");
+      }
+
+      uid = u;
+      pin = p;
+      store.set("sw_uid", u);
+      startApp();
+    }
+  } catch (e) {
+    console.error("SMART WATER auth error:", e);
+    const code = e && e.code ? e.code : "";
+
+    if (code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found") {
+      err("UID yoki PIN xato");
+    } else if (code === "auth/operation-not-allowed") {
+      err("Firebase Authentication > Sign-in method bo'limida Email/Password ni yoqing");
+    } else if (code === "PERMISSION_DENIED" || code === "permission-denied") {
+      err("Firebase Rules ruxsat bermadi. Realtime Database Rules ni tekshiring");
+    } else if (code === "auth/too-many-requests") {
+      err("Juda ko'p urinish. Bir ozdan keyin qayta urinib ko'ring");
+    } else {
+      err((mode === "reg" ? "Ro'yxatdan o'tib bo'lmadi: " : "Kirish xatosi: ") + (e && e.message ? e.message : "noma'lum xato"));
+    }
+  } finally {
+    $("loginBtn").disabled = false;
+  }
+});
+
+$("out").onclick = async () => {
+  offs.forEach(f => f());
+  offs = [];
+  try { await signOut(auth); } catch(e) { console.error(e); }
+  uid = null; pin = ""; store.del("sw_uid");
+  $("app").classList.add("hide"); $("login").classList.remove("hide"); $("pin").value = "";
+  $("uid").value = ""; $("pin2").value = ""; $("lerr").textContent = "";
+  setMode("login");
+};
+
+function startApp(){
+  $("login").classList.add("hide"); $("app").classList.remove("hide");
+  $("who").textContent = uid; setSt("Tayyor");
+  const r = ref(db, "users/" + uid + "/balance_ml");
+  const unsub = onValue(r, s => {
+    balL = (s.val() || 0) / 1000;
+    $("bal").textContent = balL.toFixed(1) + " L";
+    updateGo();
+  });
+  offs.push(unsub);
+}
+
+$("go").onclick = async () => {
+  const v = getVol();
+  if (!(v > 0 && v <= Math.min(MAX_L, balL))) return;
+
+  busy = true; updateGo(); setSt("Yuborilmoqda…");
+  try {
+    cmdRef = push(ref(db, "commands"));
+    await set(cmdRef, {
+      device_id: DEVICE_ID,
+      user_id: uid,
+      volume: v,
+      pin: pin,
+      status: "pending",
+      created_at: serverTimestamp()
+    });
+    watch(cmdRef, v);
+  } catch (e) {
+    console.error(e);
+    busy = false; updateGo(); setSt("Xato: buyruq yuborilmadi", "var(--er)");
+  }
+};
+
+function watch(refNode, v){
+  let startedAt = 0;
+  let timeoutId = null;
+  const unsub = onValue(refNode, s => {
+    const c = s.val(); if (!c) return;
+    if (c.status === "pending") {
+      setSt("Qurilma kutilmoqda…"); $("bar").classList.add("hide");
+    } else if (c.status === "dispensing") {
+      if (!startedAt) startedAt = Date.now();
+      $("bar").classList.remove("hide"); setSt("Suv berilmoqda…");
+      clearInterval(tick);
+      tick = setInterval(() => {
+        const p = Math.min(1, (Date.now() - startedAt) / (c.duration_ms || 1));
+        $("fill").style.width = (p * 100) + "%";
+        setSt("Suv berilmoqda… " + (v * p).toFixed(1) + " / " + v.toFixed(1) + " L");
+      }, 200);
+    } else {
+      clearInterval(tick); unsub(); clearTimeout(timeoutId);
+      $("fill").style.width = c.status === "completed" ? "100%" : "0%";
+      if (c.status === "completed") setSt("Tayyor: " + ((c.delivered_ml || 0) / 1000).toFixed(1) + " L berildi", "var(--ok)");
+      else if (c.status === "expired") setSt("Muddat tugadi, qayta urinib ko'ring", "var(--er)");
+      else setSt("Rad etildi: " + (c.reason || "noma'lum"), "var(--er)");
+      busy = false; updateGo();
+      setTimeout(() => $("bar").classList.add("hide"), 4000);
+    }
+  });
+
+  timeoutId = setTimeout(() => {
+    if (busy && !startedAt) {
+      setSt("Qurilma javob bermadi", "var(--er)");
+      busy = false; updateGo();
+      clearInterval(tick); unsub();
+    }
+  }, EXPIRE_MS + 5000);
+}
+
+const saved = store.get("sw_uid");
+if (saved) $("uid").value = saved;
+
+onAuthStateChanged(auth, user => {
+  if (!user) return;
+
+  const email = (user.email || "").toLowerCase();
+  const suffix = "@smartwater.app";
+  if (!email.endsWith(suffix)) return;
+
+  const restoredUid = email.slice(0, -suffix.length).toUpperCase();
+  if (!/^[0-9A-F]{8}$/.test(restoredUid)) return;
+
+  uid = restoredUid;
+  $("uid").value = restoredUid;
+  startApp();
+});
+</script>
+</body>
+</html>
