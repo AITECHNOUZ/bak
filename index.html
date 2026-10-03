@@ -172,20 +172,17 @@ $("authForm").addEventListener("submit", async (event) => {
         await createUserWithEmailAndPassword(auth, authEmail, authPassword);
       } catch (e) {
         if (e && e.code === "auth/email-already-in-use") {
-          // Oldingi urinishda Auth account yaratilgan, lekin /users/<UID>
-          // yozuvi Rules sababli yozilmay qolgan bo'lishi mumkin.
-          // Shu holatni avtomatik tiklaymiz.
-          await signInWithEmailAndPassword(auth, authEmail, authPassword);
-        } else {
-          throw e;
+          return err("Bu karta allaqachon ro'yxatdan o'tgan. Kirish bo'limidan kiring");
         }
+        throw e;
       }
 
       const userRef = ref(db, "users/" + u);
       const currentUserSnap = await get(userRef);
 
       if (currentUserSnap.exists()) {
-        return err("Bu karta allaqachon ro'yxatdan o'tgan. Kirish ni tanlang");
+        await signOut(auth);
+        return err("Bu karta allaqachon ro'yxatdan o'tgan. Kirish bo'limidan kiring");
       }
 
       await set(userRef, { balance_ml: 0, pin: p });
