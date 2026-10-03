@@ -27,15 +27,17 @@ button:disabled{opacity:.45;cursor:not-allowed}button.sel{border-color:var(--ac)
   <div class="mut"><span class="dot" id="dot"></span><span id="dev">Qurilma tekshirilmoqda…</span></div>
 
   <div id="login">
-    <div class="row">
-      <button id="tabL" class="sel">Kirish</button><button id="tabR">Ro'yxatdan o'tish</button>
-    </div>
-    <p class="mut" id="hint">Karta raqami (UID) va PIN kiriting</p>
-    <input id="uid" placeholder="Karta UID (masalan A1B2C3D4)" autocapitalize="characters" autocomplete="off">
-    <input id="pin" placeholder="PIN (4-6 raqam)" type="password" inputmode="numeric" autocomplete="off">
-    <input id="pin2" class="hide" placeholder="PINni takrorlang" type="password" inputmode="numeric" autocomplete="off">
-    <button class="main" id="loginBtn">Kirish</button>
-    <div id="lerr" class="mut" style="color:var(--er);margin-top:8px"></div>
+    <form id="authForm" novalidate>
+      <div class="row">
+        <button id="tabL" class="sel" type="button">Kirish</button><button id="tabR" type="button">Ro'yxatdan o'tish</button>
+      </div>
+      <p class="mut" id="hint">Karta raqami (UID) va PIN kiriting</p>
+      <input id="uid" placeholder="Karta UID (masalan A1B2C3D4)" autocapitalize="characters" autocomplete="off">
+      <input id="pin" placeholder="PIN (4-6 raqam)" type="password" inputmode="numeric" autocomplete="off">
+      <input id="pin2" class="hide" placeholder="PINni takrorlang" type="password" inputmode="numeric" autocomplete="off">
+      <button class="main" id="loginBtn" type="submit">Kirish</button>
+      <div id="lerr" class="mut" style="color:var(--er);margin-top:8px"></div>
+    </form>
   </div>
 
   <div id="app" class="hide">
@@ -43,13 +45,13 @@ button:disabled{opacity:.45;cursor:not-allowed}button.sel{border-color:var(--ac)
     <div class="mut" style="text-align:center">Balans (<span id="who"></span>)</div>
     <p style="margin:16px 0 0">Qancha suv olasiz?</p>
     <div class="row" id="presets">
-      <button data-v="0.2">0.2 L</button><button data-v="0.5">0.5 L</button><button data-v="1">1 L</button><button data-v="2">2 L</button>
+      <button data-v="0.2" type="button">0.2 L</button><button data-v="0.5" type="button">0.5 L</button><button data-v="1" type="button">1 L</button><button data-v="2" type="button">2 L</button>
     </div>
     <input id="custom" type="number" min="0.1" max="5" step="0.1" inputmode="decimal" placeholder="Boshqa: ___ L">
-    <button class="main" id="go">SUV OLISH</button>
+    <button class="main" id="go" type="button">SUV OLISH</button>
     <div class="bar hide" id="bar"><i id="fill"></i></div>
     <div id="st"></div>
-    <button class="link" id="out">Chiqish</button>
+    <button class="link" id="out" type="button">Chiqish</button>
   </div>
 </div>
 
@@ -130,31 +132,30 @@ function setMode(m){
 $("tabL").onclick = () => setMode("login");
 $("tabR").onclick = () => setMode("reg");
 
-$("loginBtn").onclick = async () => {
+$("authForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
   const u = $("uid").value.trim().toUpperCase();
   const p = $("pin").value.trim();
   const err = t => $("lerr").textContent = t;
-  
-  // Validation
+
   if (!u) return err("UID kiriting");
   if (!/^[0-9A-F]{8}$/.test(u)) return err("UID 8 ta belgi (0-9, A-F) bo'lishi kerak");
   if (!p) return err("PIN kiriting");
   if (!/^[0-9]{4,6}$/.test(p)) return err("PIN 4-6 ta raqam bo'lishi kerak");
-  
+
   if (mode === "reg") {
     const p2 = $("pin2").value.trim();
     if (!p2) return err("PINni takrorlang");
     if (p !== p2) return err("PIN lar mos kelmadi");
   }
-  
+
   err("");
   $("loginBtn").disabled = true;
   try {
     const userRef = db.ref("users/" + u);
     const userSnap = await userRef.get();
-    
+
     if (mode === "login") {
-      // ============ LOGIN ============
       if (!userSnap.exists()) {
         return err("Karta topilmadi. Avval ro'yxatdan o'ting");
       }
@@ -165,12 +166,8 @@ $("loginBtn").onclick = async () => {
       if (userData.pin !== p) {
         return err("PIN xato");
       }
-      uid = u; 
-      pin = p; 
-      store.set("sw_uid", u);
-      startApp();
+      uid = u; pin = p; store.set("sw_uid", u); startApp();
     } else {
-      // ============ REGISTER ============
       if (userSnap.exists()) {
         return err("Bu karta allaqachon ro'yxatdan o'tgan. Kirish ni tanlang");
       }
@@ -179,10 +176,7 @@ $("loginBtn").onclick = async () => {
         return err("Avval kartani qurilmaga tuting, so'ng UID ni tekshiring");
       }
       await userRef.set({ balance_ml: 0, pin: p });
-      uid = u; 
-      pin = p; 
-      store.set("sw_uid", u);
-      startApp();
+      uid = u; pin = p; store.set("sw_uid", u); startApp();
       setSt("Ro'yxatdan o'tdingiz. Balans 0 L: to'ldirish uchun administratorga murojaat qiling", "var(--ok)");
     }
   } catch (e) {
@@ -191,7 +185,7 @@ $("loginBtn").onclick = async () => {
   } finally {
     $("loginBtn").disabled = false;
   }
-};
+});
 
 $("out").onclick = () => {
   offs.forEach(f => f()); 
@@ -274,13 +268,10 @@ function watch(ref, v){
       }, 200);
     } 
     else {
-      // completed, expired, or rejected
       clearInterval(tick); 
       clearTimeout(timeoutId);
       ref.off("value", cb);
-      
       $("fill").style.width = c.status === "completed" ? "100%" : "0%";
-      
       if (c.status === "completed") {
         setSt("Tayyor: " + ((c.delivered_ml || 0) / 1000).toFixed(1) + " L berildi", "var(--ok)");
       } 
@@ -290,14 +281,12 @@ function watch(ref, v){
       else {
         setSt("Rad etildi: " + (c.reason || "noma'lum"), "var(--er)");
       }
-      
       busy = false; 
       updateGo();
       setTimeout(() => $("bar").classList.add("hide"), 4000);
     }
   });
   
-  // qurilma javob bermasa (ESP32 ham 120 s dan keyin "expired" qiladi)
   timeoutId = setTimeout(() => {
     if (busy && !startedAt) { 
       setSt("Qurilma javob bermadi", "var(--er)"); 
