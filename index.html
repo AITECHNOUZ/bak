@@ -327,27 +327,25 @@ function watch(refNode, v){
     clearInterval(tick);
     if (timeoutId) clearTimeout(timeoutId);
     timeoutId = null;
-    unsub();
+    if (typeof unsub === "function") unsub();
   };
 
-  const armDispenseTimeout = (durationMs) => {
-    if (timeoutId) clearTimeout(timeoutId);
+  const setProgress = pct => {
+    $("bar").classList.remove("hide");
+    $("fill").style.width = Math.max(0, Math.min(100, pct)) + "%";
+  };
 
+  const armDispenseTimeout = durationMs => {
+    if (timeoutId) clearTimeout(timeoutId);
     const waitMs = Math.max(30000, Number(durationMs || 1000) + 30000);
 
     timeoutId = setTimeout(() => {
       if (finished) return;
-
-      setSt(
-        "Suv berish holati tasdiqlanmagan. Qurilma javobini kuting.",
-        "var(--er)"
-      );
-
+      clearInterval(tick);
+      setProgress(98);
+      setSt("Qurilma yakuniy javobini kutmoqda…", "var(--er)");
       busy = false;
       updateGo();
-      clearInterval(tick);
-      $("bar").classList.remove("hide");
-      $("fill").style.width = "98%";
     }, waitMs);
   };
 
@@ -367,34 +365,19 @@ function watch(refNode, v){
         armDispenseTimeout(c.duration_ms);
       }
 
-      $("bar").classList.remove("hide");
-
       clearInterval(tick);
-
       tick = setInterval(() => {
-        const duration = Number(c.duration_ms || 1);
+        const duration = Math.max(1, Number(c.duration_ms || 1));
         const elapsed = Date.now() - startedAt;
         const raw = Math.min(1, elapsed / duration);
-
-        // 100% faqat "completed" statusidan keyin ko'rsatiladi.
-        const visual = Math.min(0.98, raw);
-
-        $("fill").style.width = (visual * 100) + "%";
+        setProgress(Math.min(0.98, raw) * 100);
 
         if (raw >= 1) {
-          setSt(
-            "Suv berish yakunlanmoqda… " +
-            v.toFixed(1) + " / " + v.toFixed(1) + " L"
-          );
+          setSt("Suv berish yakunlanmoqda… " + v.toFixed(1) + " / " + v.toFixed(1) + " L");
         } else {
-          setSt(
-            "Suv berilmoqda… " +
-            (v * raw).toFixed(1) + " / " +
-            v.toFixed(1) + " L"
-          );
+          setSt("Suv berilmoqda… " + (v * raw).toFixed(1) + " / " + v.toFixed(1) + " L");
         }
       }, 150);
-
       return;
     }
 
@@ -402,42 +385,41 @@ function watch(refNode, v){
     stopWatching();
 
     if (c.status === "completed") {
-      $("fill").style.width = "100%";
-      $("bar").classList.remove("hide");
-
+      setProgress(100);
       setSt(
-        "Tayyor: " +
-        ((Number(c.delivered_ml) || 0) / 1000).toFixed(1) +
-        " L berildi",
+        "Tayyor: " + ((Number(c.delivered_ml) || 0) / 1000).toFixed(1) + " L berildi",
         "var(--ok)"
       );
 
       busy = false;
       updateGo();
 
+      get(ref(db, "users/" + uid + "/balance_ml"))
+        .then(s => {
+          const ml = Number(s.val());
+          if (Number.isFinite(ml)) {
+            balL = ml / 1000;
+            $("bal").textContent = balL.toFixed(1) + " L";
+            updateGo();
+          }
+        })
+        .catch(e => console.error("SMART WATER balance refresh:", e));
+
       setTimeout(() => $("bar").classList.add("hide"), 4000);
-
     } else if (c.status === "expired") {
-      $("fill").style.width = "0%";
-      setSt(
-        "Buyurtma muddati tugadi. Qayta urinib ko'ring.",
-        "var(--er)"
-      );
-
+      setProgress(0);
+      setSt("Buyurtma muddati tugadi. Qayta urinib ko‘ring.", "var(--er)");
       busy = false;
       updateGo();
-
     } else {
-      $("fill").style.width = "0%";
-      setSt(
-        "Buyurtma rad etildi: " +
-        (c.reason || "noma'lum sabab"),
-        "var(--er)"
-      );
-
+      setProgress(0);
+      setSt("Buyurtma rad etildi: " + (c.reason || "noma'lum sabab"), "var(--er)");
       busy = false;
       updateGo();
     }
+  }, e => {
+    console.error("SMART WATER command listener:", e);
+    setSt("Buyruq holatini o‘qib bo‘lmadi.", "var(--er)");
   });
 }
 
