@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SMART WATER — Admin</title>
+<style>
+:root{--bg:#f4f7fb;--card:#fff;--tx:#12202f;--mut:#6b7a8c;--ac:#0a7cff;--ok:#12a150;--er:#d93025;--bd:#dbe3ec}
+@media(prefers-color-scheme:dark){:root{--bg:#0d141c;--card:#16202b;--tx:#e8eef5;--mut:#8b9bad;--bd:#26364a}}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--tx);padding:12px}
+.wrap{max-width:900px;margin:0 auto}.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
+h1{font-size:18px;margin:0}h2{font-size:15px;margin:0 0 8px}.mut{color:var(--mut);font-size:13px}
+input{padding:9px;margin:3px 0;border:1px solid var(--bd);border-radius:8px;background:transparent;color:var(--tx);font-size:14px;max-width:100%}
+button{padding:7px 10px;border:1px solid var(--bd);border-radius:8px;background:transparent;color:var(--tx);font-size:13px;cursor:pointer}
+button.main{background:var(--ac);color:#fff;border:0}button.sel{border-color:var(--ac);color:var(--ac)}button.del{color:var(--er)}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.stats{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.stat{flex:1;min-width:110px;border:1px solid var(--bd);border-radius:10px;padding:8px}
+.stat b{display:block;font-size:20px}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--er)}.dot.on{background:var(--ok)}
+.tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:6px 5px;border-bottom:1px solid var(--bd);white-space:nowrap}
+td.act button{margin:1px}.hide{display:none}.er{color:var(--er)}.ok{color:var(--ok)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="card" id="loginBox">
+  <h1>SMART WATER — Admin</h1>
+  <p class="mut">Administrator email va parol</p>
+  <input id="em" type="email" placeholder="Email" autocomplete="username"><br>
+  <input id="pw" type="password" placeholder="Parol" autocomplete="current-password"><br>
+  <button class="main" id="loginBtn">Kirish</button>
+  <div id="lerr" class="er" style="margin-top:6px"></div>
+</div>
+
+<div id="app" class="hide">
+  <div class="card">
+    <div class="top"><h1>SMART WATER — Admin</h1><button id="out">Chiqish</button></div>
+    <div class="stats">
+      <div class="stat"><span class="mut">Qurilma</span><b><span class="dot" id="dot"></span> <span id="dev" style="font-size:14px">…</span></b></div>
+      <div class="stat"><span class="mut">Foydalanuvchilar</span><b id="sUsers">0</b></div>
+      <div class="stat"><span class="mut">Jami balans</span><b id="sBal">0 L</b></div>
+      <div class="stat"><span class="mut">Bugun berilgan</span><b id="sToday">0 L</b></div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="sel" data-t="tUsers">Foydalanuvchilar</button>
+    <button data-t="tNew">Yangi kartalar <span id="nNew"></span></button>
+    <button data-t="tAdd">Qo'shish</button>
+    <button data-t="tHist">Tarix</button>
+    <button data-t="tCmd">Web buyruqlar</button>
+  </div>
+
+  <div class="card" id="tUsers">
+    <input id="q" placeholder="Qidirish: UID yoki ism" style="width:100%">
+    <div class="tw"><table><thead><tr><th>UID</th><th>Ism</th><th>Balans</th><th>Holat</th><th>Amallar</th></tr></thead><tbody id="uBody"></tbody></table></div>
+  </div>
+
+  <div class="card hide" id="tNew">
+    <h2>Qurilma ko'rgan, lekin ro'yxatda yo'q kartalar</h2>
+    <div class="tw"><table><tbody id="nBody"></tbody></table></div>
+    <p class="mut">Foydalanuvchi o'zi saytdan ro'yxatdan o'tishi ham mumkin. Bu yerdan siz ham qo'shishingiz mumkin.</p>
+  </div>
+
+  <div class="card hide" id="tAdd">
+    <h2>Foydalanuvchi qo'shish</h2>
+    <input id="aU" placeholder="UID (8 HEX)"> <input id="aN" placeholder="Ism"><br>
+    <input id="aP" placeholder="PIN (4-6 raqam)" inputmode="numeric"> <input id="aB" type="number" step="0.1" min="0" placeholder="Boshlang'ich balans, L"><br>
+    <button class="main" id="aGo">Qo'shish</button> <span id="aMsg" class="mut"></span>
+  </div>
+
+  <div class="card hide" id="tHist">
+    <h2>Oxirgi 50 ta suv berish (RFID + web)</h2>
+    <div class="tw"><table><thead><tr><th>Vaqt</th><th>UID</th><th>Hajm</th><th>Manba</th></tr></thead><tbody id="hBody"></tbody></table></div>
+  </div>
+
+  <div class="card hide" id="tCmd">
+    <h2>Oxirgi 30 ta web buyruq</h2>
+    <div class="tw"><table><thead><tr><th>Vaqt</th><th>UID</th><th>So'raldi</th><th>Holat</th><th>Berildi / Sabab</th></tr></thead><tbody id="cBody"></tbody></table></div>
+  </div>
+</div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+/* ====== SOZLAMALAR (index.html bilan bir xil) ====== */
+const firebaseConfig = {
+  apiKey: "API_KEY",
+  authDomain: "LOYIHA.firebaseapp.com",
+  databaseURL: "https://LOYIHA-default-rtdb.firebaseio.com",
+  projectId: "LOYIHA"
+};
+const DEVICE_ID = "SW001";
+/* ================================================== */
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth(), db = firebase.database();
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const L = ml => ((ml || 0) / 1000).toFixed(1) + " L";
+const T = ts => ts ? new Date(ts).toLocaleString() : "";
+const toMl = l => Math.round(parseFloat(l) * 1000);
+let users = {}, pending = {}, offs = [], lastSeen = 0, offset = 0, txs = [];
+
+// ---- Kirish ----
+$("loginBtn").onclick = async () => {
+  $("lerr").textContent = "";
+  try { await auth.signInWithEmailAndPassword($("em").value.trim(), $("pw").value); }
+  catch (e) { $("lerr").textContent = "Email yoki parol xato"; }
+};
+$("out").onclick = () => auth.signOut();
+auth.onAuthStateChanged(async u => {
+  offs.forEach(f => f()); offs = [];
+  if (!u) { $("app").classList.add("hide"); $("loginBox").classList.remove("hide"); return; }
+  try { await db.ref("users").limitToFirst(1).get(); }        // faqat admin o'qiy oladi
+  catch (e) { $("lerr").textContent = "Bu akkaunt administrator emas (/admins/" + u.uid + " = true qo'shing)"; await auth.signOut(); return; }
+  $("loginBox").classList.add("hide"); $("app").classList.remove("hide"); start();
+});
+
+function listen(ref, fn){ const cb = ref.on("value", fn, e => console.error(e)); offs.push(() => ref.off("value", cb)); }
+
+function start(){
+  listen(db.ref(".info/serverTimeOffset"), s => offset = s.val() || 0);
+  listen(db.ref("devices/" + DEVICE_ID + "/last_seen"), s => { lastSeen = s.val() || 0; renderDev(); });
+  listen(db.ref("users"), s => { users = s.val() || {}; renderUsers(); renderNew(); });
+  listen(db.ref("pending_cards"), s => { pending = s.val() || {}; renderNew(); });
+  listen(db.ref("tx").orderByChild("ts").limitToLast(50), s => {
+    txs = []; s.forEach(c => { txs.push(c.val()); }); txs.reverse(); renderHist();
+  });
+  listen(db.ref("commands").orderByChild("created_at").limitToLast(30), s => {
+    const a = []; s.forEach(c => { a.push(c.val()); }); a.reverse();
+    $("cBody").innerHTML = a.map(c => `<tr><td>${T(c.created_at)}</td><td>${esc(c.user_id)}</td><td>${esc(c.volume)} L</td>
+      <td class="${c.status==='completed'?'ok':(c.status==='rejected'||c.status==='expired'?'er':'')}">${esc(c.status)}</td>
+      <td>${c.status==='completed' ? L(c.delivered_ml) : esc(c.reason||"")}</td></tr>`).join("");
+  });
+}
+setInterval(renderDev, 3000);
+function renderDev(){
+  const on = lastSeen && (Date.now() + offset - lastSeen) < 25000;
+  $("dot").className = "dot" + (on ? " on" : ""); $("dev").textContent = on ? "online" : "offline";
+}
+
+// ---- Foydalanuvchilar ----
+function renderUsers(){
+  const q = $("q").value.trim().toLowerCase(), ids = Object.keys(users);
+  $("sUsers").textContent = ids.length;
+  $("sBal").textContent = L(ids.reduce((a, k) => a + (users[k].balance_ml || 0), 0));
+  $("uBody").innerHTML = ids.filter(k => !q || k.toLowerCase().includes(q) || (users[k].name || "").toLowerCase().includes(q)).sort().map(k => {
+    const u = users[k];
+    return `<tr><td>${esc(k)}</td><td>${esc(u.name)}</td><td>${L(u.balance_ml)}</td>
+    <td class="${u.blocked ? 'er' : 'ok'}">${u.blocked ? "Bloklangan" : "Faol"}</td>
+    <td class="act"><button data-a="bal" data-k="${esc(k)}">± Balans</button><button data-a="set" data-k="${esc(k)}">Balansni belgilash</button>
+    <button data-a="name" data-k="${esc(k)}">Ism</button><button data-a="pin" data-k="${esc(k)}">PIN</button>
+    <button data-a="blk" data-k="${esc(k)}">${u.blocked ? "Ochish" : "Bloklash"}</button><button class="del" data-a="del" data-k="${esc(k)}">O'chirish</button></td></tr>`;
+  }).join("");
+}
+$("q").oninput = renderUsers;
+
+async function run(p, okMsg){ try { await p; if (okMsg) alert(okMsg); } catch (e) { alert("Xato: " + e.message); } }
+$("uBody").onclick = e => {
+  const b = e.target.closest("button"); if (!b) return;
+  const k = b.dataset.k, u = users[k], ref = db.ref("users/" + k);
+  if (b.dataset.a === "bal") {
+    const v = prompt("Necha litr qo'shish? (manfiy = ayirish)\nHozirgi: " + L(u.balance_ml), "10");
+    if (v === null || isNaN(parseFloat(v))) return;
+    run(ref.update({ balance_ml: firebase.database.ServerValue.increment(toMl(v)) }));
+  } else if (b.dataset.a === "set") {
+    const v = prompt("Yangi balans (litr):", ((u.balance_ml || 0) / 1000).toFixed(1));
+    if (v === null || isNaN(parseFloat(v)) || parseFloat(v) < 0) return;
+    run(ref.update({ balance_ml: toMl(v) }));
+  } else if (b.dataset.a === "name") {
+    const v = prompt("Ism:", u.name || ""); if (v === null) return;
+    run(ref.update({ name: v.trim().slice(0, 40) }));
+  } else if (b.dataset.a === "pin") {
+    const v = prompt("Yangi PIN (4-6 raqam):"); if (v === null) return;
+    if (!/^[0-9]{4,6}$/.test(v.trim())) return alert("PIN 4-6 raqam bo'lishi kerak");
+    run(ref.update({ pin: v.trim() }), "PIN o'zgartirildi");
+  } else if (b.dataset.a === "blk") {
+    run(ref.update({ blocked: !u.blocked }));
+  } else if (b.dataset.a === "del") {
+    if (confirm(k + " (" + (u.name || "ismsiz") + ") o'chirilsinmi? Balans yo'qoladi.")) run(ref.remove());
+  }
+};
+
+// ---- Yangi kartalar ----
+function renderNew(){
+  const ids = Object.keys(pending).filter(k => !users[k]);
+  $("nNew").textContent = ids.length ? "(" + ids.length + ")" : "";
+  $("nBody").innerHTML = ids.map(k => `<tr><td>${esc(k)}</td><td>${T(pending[k].seen)}</td>
+    <td class="act"><button class="main" data-a="reg" data-k="${esc(k)}">Ro'yxatga olish</button><button class="del" data-a="rej" data-k="${esc(k)}">Rad etish</button></td></tr>`).join("")
+    || `<tr><td class="mut">Yangi kartalar yo'q</td></tr>`;
+}
+$("nBody").onclick = e => {
+  const b = e.target.closest("button"); if (!b) return; const k = b.dataset.k;
+  if (b.dataset.a === "rej") return run(db.ref("pending_cards/" + k).remove());
+  const name = prompt("Ism:", ""); if (name === null) return;
+  const pin = prompt("PIN (4-6 raqam):"); if (pin === null) return;
+  if (!/^[0-9]{4,6}$/.test(pin.trim())) return alert("PIN 4-6 raqam bo'lishi kerak");
+  const bal = prompt("Boshlang'ich balans (litr):", "0"); if (bal === null || isNaN(parseFloat(bal)) || parseFloat(bal) < 0) return;
+  run(db.ref("users/" + k).set({ balance_ml: toMl(bal), pin: pin.trim(), name: name.trim().slice(0, 40) }));
+};
+
+// ---- Qo'lda qo'shish ----
+$("aGo").onclick = async () => {
+  const u = $("aU").value.trim().toUpperCase(), p = $("aP").value.trim(), n = $("aN").value.trim().slice(0, 40);
+  const b = parseFloat($("aB").value || "0"), m = $("aMsg");
+  if (!/^[0-9A-F]{8}$/.test(u)) return m.textContent = "UID 8 ta HEX belgi";
+  if (!/^[0-9]{4,6}$/.test(p)) return m.textContent = "PIN 4-6 raqam";
+  if (isNaN(b) || b < 0) return m.textContent = "Balans xato";
+  if (users[u]) return m.textContent = "Bu UID allaqachon bor";
+  try {
+    await db.ref("users/" + u).set({ balance_ml: toMl(b), pin: p, name: n });
+    m.textContent = "Qo'shildi"; ["aU","aN","aP","aB"].forEach(i => $(i).value = "");
+  } catch (e) { m.textContent = "Xato: " + e.message; }
+};
+
+// ---- Tarix ----
+function renderHist(){
+  $("hBody").innerHTML = txs.map(t => `<tr><td>${T(t.ts)}</td><td>${esc(t.user_id)}${users[t.user_id]&&users[t.user_id].name?" ("+esc(users[t.user_id].name)+")":""}</td><td>${L(t.ml)}</td><td>${esc(t.src)}</td></tr>`).join("");
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  $("sToday").textContent = L(txs.filter(t => t.ts >= d0.getTime()).reduce((a, t) => a + (t.ml || 0), 0));
+}
+
+// ---- Varaqlar ----
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("sel", x === b));
+  ["tUsers","tNew","tAdd","tHist","tCmd"].forEach(id => $(id).classList.toggle("hide", id !== b.dataset.t));
+});
+</script>
+</body>
+</html>
