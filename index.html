@@ -185,7 +185,7 @@ $("authForm").addEventListener("submit", async (event) => {
         return err("Bu karta allaqachon ro'yxatdan o'tgan. Kirish bo'limidan kiring");
       }
 
-      await set(userRef, { balance_ml: 0, pin: p });
+      await set(userRef, { balance_ml: 0, pin: p, auth_uid: auth.currentUser.uid });
 
       uid = u;
       pin = p;
@@ -206,6 +206,11 @@ $("authForm").addEventListener("submit", async (event) => {
       if (!userData.pin) {
         await signOut(auth);
         return err("PIN ro'yxati noto'g'ri. Administratorga murojaat qiling");
+      }
+
+      // Eski foydalanuvchilar uchun Auth UID bog'lanishini bir marta yaratamiz.
+      if (!userData.auth_uid && auth.currentUser) {
+        await set(ref(db, "users/" + u + "/auth_uid"), auth.currentUser.uid);
       }
 
       uid = u;
@@ -261,6 +266,16 @@ $("go").onclick = async () => {
 
   busy = true; updateGo(); setSt("Yuborilmoqda…");
   try {
+    if (!auth.currentUser) {
+      throw new Error("AUTH_REQUIRED");
+    }
+
+    // Buyruq aynan shu foydalanuvchining Auth sessiyasidan yuboriladi.
+    const ownerSnap = await get(ref(db, "users/" + uid + "/auth_uid"));
+    if (!ownerSnap.exists() || ownerSnap.val() !== auth.currentUser.uid) {
+      throw new Error("USER_AUTH_BINDING_MISSING");
+    }
+
     cmdRef = push(ref(db, "commands"));
     await set(cmdRef, {
       device_id: DEVICE_ID,
@@ -272,8 +287,19 @@ $("go").onclick = async () => {
     });
     watch(cmdRef, v);
   } catch (e) {
-    console.error(e);
-    busy = false; updateGo(); setSt("Xato: buyruq yuborilmadi", "var(--er)");
+    console.error("SMART WATER command error:", e);
+    busy = false;
+    updateGo();
+
+    if (e && e.message === "AUTH_REQUIRED") {
+      setSt("Sessiya tugagan. Qayta kiring.", "var(--er)");
+    } else if (e && e.message === "USER_AUTH_BINDING_MISSING") {
+      setSt("Foydalanuvchi sessiyasi bog'lanmagan. Chiqib, qayta kiring.", "var(--er)");
+    } else if (e && (e.code === "PERMISSION_DENIED" || e.code === "permission-denied")) {
+      setSt("Firebase Rules buyruqqa ruxsat bermadi.", "var(--er)");
+    } else {
+      setSt("Xato: buyruq yuborilmadi", "var(--er)");
+    }
   }
 };
 
