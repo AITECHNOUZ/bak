@@ -55,10 +55,10 @@ button:disabled{opacity:.45;cursor:not-allowed}button.sel{border-color:var(--ac)
   </div>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script>
-/* ====== SOZLAMALAR (mikrodastur bilan bir xil bo'lsin) ====== */
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, onValue, get, set, push, serverTimestamp, off } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
 const firebaseConfig = {
   apiKey: "AIzaSyC-Cm4rAlbDmoDs3lpYyRTTOVRlRwbPvMw",
   authDomain: "bakk-9ff13.firebaseapp.com",
@@ -69,14 +69,15 @@ const firebaseConfig = {
   appId: "1:454857289201:web:62bf1b0128bc3189dc2850",
   measurementId: "G-KNE0NX3VSC"
 };
-const DEVICE_ID = "SW001";      // = ESP32 DEVICE_ID
-const MAX_L = 5;                // = ESP32 MAX_ML / 1000
-const EXPIRE_MS = 120000;       // = ESP32 muddat (120 s)
-/* =========================================================== */
 
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
 const $ = id => document.getElementById(id);
+
+const DEVICE_ID = "SW001";
+const MAX_L = 5;
+const EXPIRE_MS = 120000;
+
 let uid = null, pin = "", balL = 0, offset = 0, lastSeen = 0, busy = false, vol = 0;
 let offs = [], cmdRef = null, tick = null;
 
@@ -85,12 +86,13 @@ const store = {
   set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} },
   del(k){ try{ localStorage.removeItem(k); }catch(e){} }
 };
+
 const setSt = (t, c) => { $("st").textContent = t; $("st").style.color = c || "var(--tx)"; };
 
-// Server vaqti farqi + qurilma holati
-db.ref(".info/serverTimeOffset").on("value", s => offset = s.val() || 0);
-db.ref("devices/" + DEVICE_ID + "/last_seen").on("value", s => { lastSeen = s.val() || 0; renderDev(); });
+onValue(ref(db, ".info/serverTimeOffset"), s => offset = s.val() || 0);
+onValue(ref(db, "devices/" + DEVICE_ID + "/last_seen"), s => { lastSeen = s.val() || 0; renderDev(); });
 setInterval(renderDev, 3000);
+
 function renderDev(){
   const on = lastSeen && (Date.now() + offset - lastSeen) < 25000;
   $("dot").className = "dot" + (on ? " on" : "");
@@ -118,7 +120,6 @@ $("custom").oninput = () => {
   vol = 0; document.querySelectorAll("#presets button").forEach(x => x.classList.remove("sel")); updateGo();
 };
 
-// ---- Kirish ----
 let mode = "login";
 function setMode(m){
   mode = m; $("pin2").classList.toggle("hide", m !== "reg");
@@ -152,30 +153,20 @@ $("authForm").addEventListener("submit", async (event) => {
   err("");
   $("loginBtn").disabled = true;
   try {
-    const userRef = db.ref("users/" + u);
-    const userSnap = await userRef.get();
+    const userRef = ref(db, "users/" + u);
+    const userSnap = await get(userRef);
 
     if (mode === "login") {
-      if (!userSnap.exists()) {
-        return err("Karta topilmadi. Avval ro'yxatdan o'ting");
-      }
+      if (!userSnap.exists()) return err("Karta topilmadi. Avval ro'yxatdan o'ting");
       const userData = userSnap.val();
-      if (!userData.pin) {
-        return err("PIN ro'yxati noto'g'ri. Administratorga murojaat qiling");
-      }
-      if (userData.pin !== p) {
-        return err("PIN xato");
-      }
+      if (!userData.pin) return err("PIN ro'yxati noto'g'ri. Administratorga murojaat qiling");
+      if (userData.pin !== p) return err("PIN xato");
       uid = u; pin = p; store.set("sw_uid", u); startApp();
     } else {
-      if (userSnap.exists()) {
-        return err("Bu karta allaqachon ro'yxatdan o'tgan. Kirish ni tanlang");
-      }
-      const pc = await db.ref("pending_cards/" + u).get();
-      if (!pc.exists()) {
-        return err("Avval kartani qurilmaga tuting, so'ng UID ni tekshiring");
-      }
-      await userRef.set({ balance_ml: 0, pin: p });
+      if (userSnap.exists()) return err("Bu karta allaqachon ro'yxatdan o'tgan. Kirish ni tanlang");
+      const pc = await get(ref(db, "pending_cards/" + u));
+      if (!pc.exists()) return err("Avval kartani qurilmaga tuting, so'ng UID ni tekshiring");
+      await set(userRef, { balance_ml: 0, pin: p });
       uid = u; pin = p; store.set("sw_uid", u); startApp();
       setSt("Ro'yxatdan o'tdingiz. Balans 0 L: to'ldirish uchun administratorga murojaat qiling", "var(--ok)");
     }
@@ -188,119 +179,85 @@ $("authForm").addEventListener("submit", async (event) => {
 });
 
 $("out").onclick = () => {
-  offs.forEach(f => f()); 
-  offs = []; 
-  uid = null; 
-  pin = ""; 
-  store.del("sw_uid");
-  $("app").classList.add("hide"); 
-  $("login").classList.remove("hide"); 
-  $("pin").value = "";
-  $("uid").value = "";
-  $("pin2").value = "";
-  $("lerr").textContent = "";
+  offs.forEach(f => f());
+  offs = [];
+  uid = null; pin = ""; store.del("sw_uid");
+  $("app").classList.add("hide"); $("login").classList.remove("hide"); $("pin").value = "";
+  $("uid").value = ""; $("pin2").value = ""; $("lerr").textContent = "";
   setMode("login");
 };
 
 function startApp(){
-  $("login").classList.add("hide"); 
-  $("app").classList.remove("hide");
-  $("who").textContent = uid; 
-  setSt("Tayyor");
-  const r = db.ref("users/" + uid + "/balance_ml");
-  const cb = r.on("value", s => { 
-    balL = (s.val() || 0) / 1000; 
-    $("bal").textContent = balL.toFixed(1) + " L"; 
-    updateGo(); 
+  $("login").classList.add("hide"); $("app").classList.remove("hide");
+  $("who").textContent = uid; setSt("Tayyor");
+  const r = ref(db, "users/" + uid + "/balance_ml");
+  const unsub = onValue(r, s => {
+    balL = (s.val() || 0) / 1000;
+    $("bal").textContent = balL.toFixed(1) + " L";
+    updateGo();
   });
-  offs.push(() => r.off("value", cb));
+  offs.push(unsub);
 }
 
-// ---- Buyruq yuborish ----
 $("go").onclick = async () => {
   const v = getVol();
   if (!(v > 0 && v <= Math.min(MAX_L, balL))) return;
-  
-  busy = true; 
-  updateGo(); 
-  setSt("Yuborilmoqda…");
-  
+
+  busy = true; updateGo(); setSt("Yuborilmoqda…");
   try {
-    cmdRef = db.ref("commands").push();
-    await cmdRef.set({
-      device_id: DEVICE_ID, 
-      user_id: uid, 
-      volume: v, 
+    cmdRef = push(ref(db, "commands"));
+    await set(cmdRef, {
+      device_id: DEVICE_ID,
+      user_id: uid,
+      volume: v,
       pin: pin,
-      status: "pending", 
-      created_at: firebase.database.ServerValue.TIMESTAMP
+      status: "pending",
+      created_at: serverTimestamp()
     });
     watch(cmdRef, v);
   } catch (e) {
     console.error(e);
-    busy = false; 
-    updateGo(); 
-    setSt("Xato: buyruq yuborilmadi", "var(--er)");
+    busy = false; updateGo(); setSt("Xato: buyruq yuborilmadi", "var(--er)");
   }
 };
 
-function watch(ref, v){
-  let startedAt = 0, sentAt = Date.now();
+function watch(refNode, v){
+  let startedAt = 0;
   let timeoutId = null;
-  
-  const cb = ref.on("value", s => {
-    const c = s.val(); 
-    if (!c) return;
-    
+  const unsub = onValue(refNode, s => {
+    const c = s.val(); if (!c) return;
     if (c.status === "pending") {
-      setSt("Qurilma kutilmoqda…"); 
-      $("bar").classList.add("hide");
-    } 
-    else if (c.status === "dispensing") {
+      setSt("Qurilma kutilmoqda…"); $("bar").classList.add("hide");
+    } else if (c.status === "dispensing") {
       if (!startedAt) startedAt = Date.now();
-      $("bar").classList.remove("hide"); 
-      setSt("Suv berilmoqda…");
+      $("bar").classList.remove("hide"); setSt("Suv berilmoqda…");
       clearInterval(tick);
       tick = setInterval(() => {
         const p = Math.min(1, (Date.now() - startedAt) / (c.duration_ms || 1));
         $("fill").style.width = (p * 100) + "%";
         setSt("Suv berilmoqda… " + (v * p).toFixed(1) + " / " + v.toFixed(1) + " L");
       }, 200);
-    } 
-    else {
-      clearInterval(tick); 
-      clearTimeout(timeoutId);
-      ref.off("value", cb);
+    } else {
+      clearInterval(tick); unsub(); clearTimeout(timeoutId);
       $("fill").style.width = c.status === "completed" ? "100%" : "0%";
-      if (c.status === "completed") {
-        setSt("Tayyor: " + ((c.delivered_ml || 0) / 1000).toFixed(1) + " L berildi", "var(--ok)");
-      } 
-      else if (c.status === "expired") {
-        setSt("Muddat tugadi, qayta urinib ko'ring", "var(--er)");
-      } 
-      else {
-        setSt("Rad etildi: " + (c.reason || "noma'lum"), "var(--er)");
-      }
-      busy = false; 
-      updateGo();
+      if (c.status === "completed") setSt("Tayyor: " + ((c.delivered_ml || 0) / 1000).toFixed(1) + " L berildi", "var(--ok)");
+      else if (c.status === "expired") setSt("Muddat tugadi, qayta urinib ko'ring", "var(--er)");
+      else setSt("Rad etildi: " + (c.reason || "noma'lum"), "var(--er)");
+      busy = false; updateGo();
       setTimeout(() => $("bar").classList.add("hide"), 4000);
     }
   });
-  
+
   timeoutId = setTimeout(() => {
-    if (busy && !startedAt) { 
-      setSt("Qurilma javob bermadi", "var(--er)"); 
-      busy = false; 
-      updateGo();
-      clearInterval(tick);
-      ref.off("value", cb);
+    if (busy && !startedAt) {
+      setSt("Qurilma javob bermadi", "var(--er)");
+      busy = false; updateGo();
+      clearInterval(tick); unsub();
     }
   }, EXPIRE_MS + 5000);
 }
 
-// Avvalgi sessiya
-const saved = store.get("sw_uid"); 
-if (saved) $("uid").value = saved;
+const saved = store.get("sw_uid"); if (saved) $("uid").value = saved;
 </script>
 </body>
 </html>
