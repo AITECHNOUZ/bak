@@ -134,35 +134,91 @@ $("loginBtn").onclick = async () => {
   const u = $("uid").value.trim().toUpperCase();
   const p = $("pin").value.trim();
   const err = t => $("lerr").textContent = t;
+  
+  // Validation
+  if (!u) return err("UID kiriting");
   if (!/^[0-9A-F]{8}$/.test(u)) return err("UID 8 ta belgi (0-9, A-F) bo'lishi kerak");
+  if (!p) return err("PIN kiriting");
+  if (!/^[0-9]{4,6}$/.test(p)) return err("PIN 4-6 ta raqam bo'lishi kerak");
+  
+  if (mode === "reg") {
+    const p2 = $("pin2").value.trim();
+    if (!p2) return err("PINni takrorlang");
+    if (p !== p2) return err("PIN lar mos kelmadi");
+  }
+  
   err("");
+  $("loginBtn").disabled = true;
   try {
-    const bal = await db.ref("users/" + u + "/balance_ml").get();
+    const userRef = db.ref("users/" + u);
+    const userSnap = await userRef.get();
+    
     if (mode === "login") {
-      if (!bal.exists()) return err("Karta topilmadi. Avval ro'yxatdan o'ting");
+      // ============ LOGIN ============
+      if (!userSnap.exists()) {
+        return err("Karta topilmadi. Avval ro'yxatdan o'ting");
+      }
+      const userData = userSnap.val();
+      if (!userData.pin) {
+        return err("PIN ro'yxati noto'g'ri. Administratorga murojaat qiling");
+      }
+      if (userData.pin !== p) {
+        return err("PIN xato");
+      }
+      uid = u; 
+      pin = p; 
+      store.set("sw_uid", u);
+      startApp();
     } else {
-      if (!/^[0-9]{4,6}$/.test(p)) return err("PIN 4-6 ta raqam bo'lishi kerak");
-      if (p !== $("pin2").value.trim()) return err("PIN lar mos kelmadi");
-      if (bal.exists()) return err("Bu karta allaqachon ro'yxatdan o'tgan. Kirish ni tanlang");
+      // ============ REGISTER ============
+      if (userSnap.exists()) {
+        return err("Bu karta allaqachon ro'yxatdan o'tgan. Kirish ni tanlang");
+      }
       const pc = await db.ref("pending_cards/" + u).get();
-      if (!pc.exists()) return err("Avval kartani qurilmaga tuting, so'ng UID ni tekshiring");
-      await db.ref("users/" + u).set({ balance_ml: 0, pin: p });
+      if (!pc.exists()) {
+        return err("Avval kartani qurilmaga tuting, so'ng UID ni tekshiring");
+      }
+      await userRef.set({ balance_ml: 0, pin: p });
+      uid = u; 
+      pin = p; 
+      store.set("sw_uid", u);
+      startApp();
+      setSt("Ro'yxatdan o'tdingiz. Balans 0 L: to'ldirish uchun administratorga murojaat qiling", "var(--ok)");
     }
-    uid = u; pin = p; store.set("sw_uid", u);
-    startApp();
-    if (mode === "reg") setSt("Ro'yxatdan o'tdingiz. Balans 0 L: to'ldirish uchun administratorga murojaat qiling", "var(--ok)");
-  } catch (e) { err(mode === "reg" ? "Ro'yxatdan o'tib bo'lmadi" : "Ulanish xatosi"); }
+  } catch (e) {
+    console.error(e);
+    err(mode === "reg" ? "Ro'yxatdan o'tib bo'lmadi" : "Ulanish xatosi");
+  } finally {
+    $("loginBtn").disabled = false;
+  }
 };
+
 $("out").onclick = () => {
-  offs.forEach(f => f()); offs = []; uid = null; pin = ""; store.del("sw_uid");
-  $("app").classList.add("hide"); $("login").classList.remove("hide"); $("pin").value = "";
+  offs.forEach(f => f()); 
+  offs = []; 
+  uid = null; 
+  pin = ""; 
+  store.del("sw_uid");
+  $("app").classList.add("hide"); 
+  $("login").classList.remove("hide"); 
+  $("pin").value = "";
+  $("uid").value = "";
+  $("pin2").value = "";
+  $("lerr").textContent = "";
+  setMode("login");
 };
 
 function startApp(){
-  $("login").classList.add("hide"); $("app").classList.remove("hide");
-  $("who").textContent = uid; setSt("Tayyor");
+  $("login").classList.add("hide"); 
+  $("app").classList.remove("hide");
+  $("who").textContent = uid; 
+  setSt("Tayyor");
   const r = db.ref("users/" + uid + "/balance_ml");
-  const cb = r.on("value", s => { balL = (s.val() || 0) / 1000; $("bal").textContent = balL.toFixed(1) + " L"; updateGo(); });
+  const cb = r.on("value", s => { 
+    balL = (s.val() || 0) / 1000; 
+    $("bal").textContent = balL.toFixed(1) + " L"; 
+    updateGo(); 
+  });
   offs.push(() => r.off("value", cb));
 }
 
@@ -170,50 +226,92 @@ function startApp(){
 $("go").onclick = async () => {
   const v = getVol();
   if (!(v > 0 && v <= Math.min(MAX_L, balL))) return;
-  busy = true; updateGo(); setSt("Yuborilmoqda…");
+  
+  busy = true; 
+  updateGo(); 
+  setSt("Yuborilmoqda…");
+  
   try {
     cmdRef = db.ref("commands").push();
     await cmdRef.set({
-      device_id: DEVICE_ID, user_id: uid, volume: v, pin: pin,
-      status: "pending", created_at: firebase.database.ServerValue.TIMESTAMP
+      device_id: DEVICE_ID, 
+      user_id: uid, 
+      volume: v, 
+      pin: pin,
+      status: "pending", 
+      created_at: firebase.database.ServerValue.TIMESTAMP
     });
     watch(cmdRef, v);
-  } catch (e) { busy = false; updateGo(); setSt("Xato: buyruq yuborilmadi", "var(--er)"); }
+  } catch (e) {
+    console.error(e);
+    busy = false; 
+    updateGo(); 
+    setSt("Xato: buyruq yuborilmadi", "var(--er)");
+  }
 };
 
 function watch(ref, v){
   let startedAt = 0, sentAt = Date.now();
+  let timeoutId = null;
+  
   const cb = ref.on("value", s => {
-    const c = s.val(); if (!c) return;
+    const c = s.val(); 
+    if (!c) return;
+    
     if (c.status === "pending") {
-      setSt("Qurilma kutilmoqda…"); $("bar").classList.add("hide");
-    } else if (c.status === "dispensing") {
+      setSt("Qurilma kutilmoqda…"); 
+      $("bar").classList.add("hide");
+    } 
+    else if (c.status === "dispensing") {
       if (!startedAt) startedAt = Date.now();
-      $("bar").classList.remove("hide"); setSt("Suv berilmoqda…");
+      $("bar").classList.remove("hide"); 
+      setSt("Suv berilmoqda…");
       clearInterval(tick);
       tick = setInterval(() => {
         const p = Math.min(1, (Date.now() - startedAt) / (c.duration_ms || 1));
         $("fill").style.width = (p * 100) + "%";
         setSt("Suv berilmoqda… " + (v * p).toFixed(1) + " / " + v.toFixed(1) + " L");
       }, 200);
-    } else {
-      clearInterval(tick); ref.off("value", cb); clearTimeout(to);
+    } 
+    else {
+      // completed, expired, or rejected
+      clearInterval(tick); 
+      clearTimeout(timeoutId);
+      ref.off("value", cb);
+      
       $("fill").style.width = c.status === "completed" ? "100%" : "0%";
-      if (c.status === "completed") setSt("Tayyor: " + ((c.delivered_ml || 0) / 1000).toFixed(1) + " L berildi", "var(--ok)");
-      else if (c.status === "expired") setSt("Muddat tugadi, qayta urinib ko'ring", "var(--er)");
-      else setSt("Rad etildi: " + (c.reason || "noma'lum"), "var(--er)");
-      busy = false; updateGo();
+      
+      if (c.status === "completed") {
+        setSt("Tayyor: " + ((c.delivered_ml || 0) / 1000).toFixed(1) + " L berildi", "var(--ok)");
+      } 
+      else if (c.status === "expired") {
+        setSt("Muddat tugadi, qayta urinib ko'ring", "var(--er)");
+      } 
+      else {
+        setSt("Rad etildi: " + (c.reason || "noma'lum"), "var(--er)");
+      }
+      
+      busy = false; 
+      updateGo();
       setTimeout(() => $("bar").classList.add("hide"), 4000);
     }
   });
+  
   // qurilma javob bermasa (ESP32 ham 120 s dan keyin "expired" qiladi)
-  const to = setTimeout(() => {
-    if (busy && !startedAt) { setSt("Qurilma javob bermadi", "var(--er)"); busy = false; updateGo(); }
+  timeoutId = setTimeout(() => {
+    if (busy && !startedAt) { 
+      setSt("Qurilma javob bermadi", "var(--er)"); 
+      busy = false; 
+      updateGo();
+      clearInterval(tick);
+      ref.off("value", cb);
+    }
   }, EXPIRE_MS + 5000);
 }
 
 // Avvalgi sessiya
-const saved = store.get("sw_uid"); if (saved) $("uid").value = saved;
+const saved = store.get("sw_uid"); 
+if (saved) $("uid").value = saved;
 </script>
 </body>
 </html>
