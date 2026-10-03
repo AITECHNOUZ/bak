@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SMART WATER</title>
+<title>SMART WATER — Online Dispenser</title>
 <style>
 :root{--bg:#f4f7fb;--card:#fff;--tx:#12202f;--mut:#6b7a8c;--ac:#0a7cff;--ok:#12a150;--er:#d93025;--bd:#dbe3ec}
 @media(prefers-color-scheme:dark){:root{--bg:#0d141c;--card:#16202b;--tx:#e8eef5;--mut:#8b9bad;--bd:#26364a}}
@@ -56,9 +56,9 @@ button:disabled{opacity:.45;cursor:not-allowed}button.sel{border-color:var(--ac)
 </div>
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getDatabase, ref, onValue, get, set, push, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import { getDatabase, ref, onValue, get, set, push, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, deleteUser } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyC-Cm4rAlbDmoDs3lpYyRTTOVRlRwbPvMw",
@@ -79,9 +79,10 @@ const $ = id => document.getElementById(id);
 const DEVICE_ID = "SW001";
 const MAX_L = 5;
 const EXPIRE_MS = 120000;
+const COMMAND_KEY = "sw_cmd";
 
 let uid = null, pin = "", balL = 0, offset = 0, lastSeen = 0, busy = false, vol = 0;
-let offs = [], cmdRef = null, tick = null;
+let offs = [], cmdRef = null, tick = null, cmdUnsub = null, activeCmdId = null;
 
 const store = {
   get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
@@ -168,13 +169,16 @@ $("authForm").addEventListener("submit", async (event) => {
         return err("Avval kartani qurilmaga tuting, so'ng UID ni tekshiring");
       }
 
+      let createdNow = false;
       try {
         await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+        createdNow = true;
       } catch (e) {
         if (e && e.code === "auth/email-already-in-use") {
-          return err("Bu karta allaqachon ro'yxatdan o'tgan. Kirish bo'limidan kiring");
+          await signInWithEmailAndPassword(auth, authEmail, authPassword);
+        } else {
+          throw e;
         }
-        throw e;
       }
 
       const userRef = ref(db, "users/" + u);
@@ -185,7 +189,14 @@ $("authForm").addEventListener("submit", async (event) => {
         return err("Bu karta allaqachon ro'yxatdan o'tgan. Kirish bo'limidan kiring");
       }
 
-      await set(userRef, { balance_ml: 0, pin: p, auth_uid: auth.currentUser.uid });
+      try {
+        await set(userRef, { balance_ml: 0, pin: p });
+      } catch (e) {
+        if (createdNow && auth.currentUser) {
+          try { await deleteUser(auth.currentUser); } catch (_) {}
+        }
+        throw e;
+      }
 
       uid = u;
       pin = p;
@@ -206,11 +217,6 @@ $("authForm").addEventListener("submit", async (event) => {
       if (!userData.pin) {
         await signOut(auth);
         return err("PIN ro'yxati noto'g'ri. Administratorga murojaat qiling");
-      }
-
-      // Eski foydalanuvchilar uchun Auth UID bog'lanishini bir marta yaratamiz.
-      if (!userData.auth_uid && auth.currentUser) {
-        await set(ref(db, "users/" + u + "/auth_uid"), auth.currentUser.uid);
       }
 
       uid = u;
@@ -241,6 +247,7 @@ $("authForm").addEventListener("submit", async (event) => {
 $("out").onclick = async () => {
   offs.forEach(f => f());
   offs = [];
+  clearCommandWatch();
   try { await signOut(auth); } catch(e) { console.error(e); }
   uid = null; pin = ""; store.del("sw_uid");
   $("app").classList.add("hide"); $("login").classList.remove("hide"); $("pin").value = "";
@@ -248,11 +255,48 @@ $("out").onclick = async () => {
   setMode("login");
 };
 
-function startApp(){
-  $("login").classList.add("hide"); $("app").classList.remove("hide");
-  $("who").textContent = uid; setSt("Tayyor");
 
-  // Bir foydalanuvchi uchun eski balans listenerlarini takroran ulab yubormaymiz.
+function clearCommandWatch(){
+  if (typeof cmdUnsub === "function") cmdUnsub();
+  cmdUnsub = null;
+  clearInterval(tick);
+  tick = null;
+  cmdRef = null;
+}
+
+function terminalCommandCleanup(){
+  clearCommandWatch();
+  activeCmdId = null;
+  store.del(COMMAND_KEY);
+}
+
+async function resumeActiveCommand(){
+  if (!uid) return;
+  const id = store.get(COMMAND_KEY);
+  if (!id || !/^[A-Za-z0-9_-]{10,40}$/.test(id)) return;
+
+  try {
+    const s = await get(ref(db, "commands/" + id));
+    if (!s.exists()) { store.del(COMMAND_KEY); return; }
+    const c = s.val() || {};
+    if (String(c.user_id || "") !== uid) { store.del(COMMAND_KEY); return; }
+
+    activeCmdId = id;
+    cmdRef = ref(db, "commands/" + id);
+    busy = !["completed","rejected","expired"].includes(c.status);
+    updateGo();
+    watch(cmdRef, Number(c.volume || 0), id);
+  } catch (e) {
+    console.error("SMART WATER command resume:", e);
+  }
+}
+
+function startApp(){
+  $("login").classList.add("hide");
+  $("app").classList.remove("hide");
+  $("who").textContent = uid;
+  setSt("Tayyor");
+
   offs.forEach(f => f());
   offs = [];
 
@@ -267,29 +311,31 @@ function startApp(){
     setSt("Balansni Firebase'dan o'qib bo'lmadi", "var(--er)");
   });
   offs.push(unsub);
+
+  resumeActiveCommand();
 }
 
 $("go").onclick = async () => {
   const v = getVol();
   if (!(v > 0 && v <= Math.min(MAX_L, balL))) return;
 
-  busy = true; updateGo(); setSt("Yuborilmoqda…");
+  busy = true;
+  updateGo();
+  setSt("Buyurtma yuborilmoqda…");
+
   try {
-    if (!auth.currentUser) {
-      throw new Error("AUTH_REQUIRED");
-    }
+    if (!auth.currentUser) throw new Error("AUTH_REQUIRED");
+    if (!/^[0-9]{4,6}$/.test(pin)) throw new Error("PIN_SESSION_MISSING");
 
-    // Buyruq aynan shu foydalanuvchining Auth sessiyasidan yuboriladi.
-    const ownerSnap = await get(ref(db, "users/" + uid + "/auth_uid"));
-    if (!ownerSnap.exists() || ownerSnap.val() !== auth.currentUser.uid) {
-      throw new Error("USER_AUTH_BINDING_MISSING");
-    }
-
-    if (!/^[0-9]{4,6}$/.test(pin)) {
-      throw new Error("PIN_SESSION_MISSING");
+    const ownerEmail = (auth.currentUser.email || "").toLowerCase();
+    if (ownerEmail !== uid.toLowerCase() + "@smartwater.app") {
+      throw new Error("AUTH_OWNER_MISMATCH");
     }
 
     cmdRef = push(ref(db, "commands"));
+    const id = cmdRef.key;
+    if (!id) throw new Error("COMMAND_ID_MISSING");
+
     await set(cmdRef, {
       device_id: DEVICE_ID,
       user_id: uid,
@@ -298,19 +344,22 @@ $("go").onclick = async () => {
       status: "pending",
       created_at: serverTimestamp()
     });
-    watch(cmdRef, v);
+
+    activeCmdId = id;
+    store.set(COMMAND_KEY, id);
+    watch(cmdRef, v, id);
   } catch (e) {
     console.error("SMART WATER command error:", e);
     busy = false;
     updateGo();
 
-    if (e && e.message === "AUTH_REQUIRED") {
+    if (e?.message === "AUTH_REQUIRED") {
       setSt("Sessiya tugagan. Qayta kiring.", "var(--er)");
-    } else if (e && e.message === "USER_AUTH_BINDING_MISSING") {
-      setSt("Foydalanuvchi sessiyasi bog'lanmagan. Chiqib, qayta kiring.", "var(--er)");
-    } else if (e && e.message === "PIN_SESSION_MISSING") {
+    } else if (e?.message === "PIN_SESSION_MISSING") {
       setSt("PIN sessiyada topilmadi. Qayta kiring.", "var(--er)");
-    } else if (e && (e.code === "PERMISSION_DENIED" || e.code === "permission-denied")) {
+    } else if (e?.message === "AUTH_OWNER_MISMATCH") {
+      setSt("Auth sessiyasi bu kartaga tegishli emas. Qayta kiring.", "var(--er)");
+    } else if (e?.code === "PERMISSION_DENIED" || e?.code === "permission-denied") {
       setSt("Firebase Rules buyruqqa ruxsat bermadi.", "var(--er)");
     } else {
       setSt("Xato: buyruq yuborilmadi", "var(--er)");
@@ -318,85 +367,71 @@ $("go").onclick = async () => {
   }
 };
 
-function watch(refNode, v){
-  let startedAt = 0;
-  let timeoutId = null;
-  let finished = false;
+function watch(refNode, requestedL, id){
+  clearCommandWatch();
+  cmdRef = refNode;
+  activeCmdId = id || refNode.key || null;
+  if (activeCmdId) store.set(COMMAND_KEY, activeCmdId);
 
-  const stopWatching = () => {
-    clearInterval(tick);
-    if (timeoutId) clearTimeout(timeoutId);
-    timeoutId = null;
-    if (typeof unsub === "function") unsub();
-  };
+  let finished = false;
 
   const setProgress = pct => {
     $("bar").classList.remove("hide");
     $("fill").style.width = Math.max(0, Math.min(100, pct)) + "%";
   };
 
-  const armDispenseTimeout = durationMs => {
-    if (timeoutId) clearTimeout(timeoutId);
-    const waitMs = Math.max(30000, Number(durationMs || 1000) + 30000);
+  const updateDispensingView = c => {
+    const duration = Math.max(1, Number(c.duration_ms || 1));
+    const startedAt = Number(c.started_at || 0);
+    const now = Date.now() + offset;
+    const raw = startedAt > 0 ? Math.max(0, Math.min(1, (now - startedAt) / duration)) : 0;
+    setProgress(raw >= 1 ? 98 : raw * 98);
 
-    timeoutId = setTimeout(() => {
-      if (finished) return;
-      clearInterval(tick);
-      setProgress(98);
-      setSt("Qurilma yakuniy javobini kutmoqda…", "var(--er)");
-      busy = false;
-      updateGo();
-    }, waitMs);
+    const target = Number(c.volume || requestedL || 0);
+    if (raw >= 1) {
+      setSt("Suv berish yakunlanmoqda… " + target.toFixed(1) + " L");
+    } else {
+      setSt("Suv berilmoqda… " + (target * raw).toFixed(1) + " / " + target.toFixed(1) + " L");
+    }
   };
 
-  const unsub = onValue(refNode, s => {
+  cmdUnsub = onValue(refNode, s => {
     const c = s.val();
     if (!c || finished) return;
 
     if (c.status === "pending") {
+      busy = true;
       $("bar").classList.add("hide");
       setSt("Buyurtma qurilmaga yuborildi. Qurilma kutilmoqda…");
+      updateGo();
       return;
     }
 
     if (c.status === "dispensing") {
-      if (!startedAt) {
-        startedAt = Date.now();
-        armDispenseTimeout(c.duration_ms);
-      }
-
+      busy = true;
+      updateGo();
       clearInterval(tick);
-      tick = setInterval(() => {
-        const duration = Math.max(1, Number(c.duration_ms || 1));
-        const elapsed = Date.now() - startedAt;
-        const raw = Math.min(1, elapsed / duration);
-        setProgress(Math.min(0.98, raw) * 100);
-
-        if (raw >= 1) {
-          setSt("Suv berish yakunlanmoqda… " + v.toFixed(1) + " / " + v.toFixed(1) + " L");
-        } else {
-          setSt("Suv berilmoqda… " + (v * raw).toFixed(1) + " / " + v.toFixed(1) + " L");
-        }
-      }, 150);
+      updateDispensingView(c);
+      tick = setInterval(() => updateDispensingView(c), 150);
       return;
     }
 
     finished = true;
-    stopWatching();
+    clearInterval(tick);
+    tick = null;
+    clearCommandWatch();
 
     if (c.status === "completed") {
       setProgress(100);
-      setSt(
-        "Tayyor: " + ((Number(c.delivered_ml) || 0) / 1000).toFixed(1) + " L berildi",
-        "var(--ok)"
-      );
-
+      const delivered = (Number(c.delivered_ml) || 0) / 1000;
+      setSt("Tayyor: " + delivered.toFixed(1) + " L berildi", "var(--ok)");
       busy = false;
+      terminalCommandCleanup();
       updateGo();
 
       get(ref(db, "users/" + uid + "/balance_ml"))
-        .then(s => {
-          const ml = Number(s.val());
+        .then(s2 => {
+          const ml = Number(s2.val());
           if (Number.isFinite(ml)) {
             balL = ml / 1000;
             $("bal").textContent = balL.toFixed(1) + " L";
@@ -406,20 +441,25 @@ function watch(refNode, v){
         .catch(e => console.error("SMART WATER balance refresh:", e));
 
       setTimeout(() => $("bar").classList.add("hide"), 4000);
-    } else if (c.status === "expired") {
+      return;
+    }
+
+    if (c.status === "expired") {
       setProgress(0);
       setSt("Buyurtma muddati tugadi. Qayta urinib ko‘ring.", "var(--er)");
-      busy = false;
-      updateGo();
     } else {
       setProgress(0);
       setSt("Buyurtma rad etildi: " + (c.reason || "noma'lum sabab"), "var(--er)");
-      busy = false;
-      updateGo();
     }
+
+    busy = false;
+    terminalCommandCleanup();
+    updateGo();
   }, e => {
     console.error("SMART WATER command listener:", e);
-    setSt("Buyruq holatini o‘qib bo‘lmadi.", "var(--er)");
+    busy = true;
+    updateGo();
+    setSt("Buyruq holatini o‘qib bo‘lmadi. Kutish davom etmoqda…", "var(--er)");
   });
 }
 
@@ -467,11 +507,6 @@ async function restoreAuthSession(user) {
     $("uid").value = restoredUid;
     $("pin").value = savedPin;
     store.set("sw_uid", restoredUid);
-
-    // Eski foydalanuvchilar uchun Auth UID bog'lanishini bir marta yaratamiz.
-    if (!data.auth_uid) {
-      await set(ref(db, "users/" + restoredUid + "/auth_uid"), user.uid);
-    }
 
     startApp();
   } catch (e) {
