@@ -321,37 +321,124 @@ $("go").onclick = async () => {
 function watch(refNode, v){
   let startedAt = 0;
   let timeoutId = null;
-  const unsub = onValue(refNode, s => {
-    const c = s.val(); if (!c) return;
-    if (c.status === "pending") {
-      setSt("Qurilma kutilmoqda…"); $("bar").classList.add("hide");
-    } else if (c.status === "dispensing") {
-      if (!startedAt) startedAt = Date.now();
-      $("bar").classList.remove("hide"); setSt("Suv berilmoqda…");
+  let finished = false;
+
+  const stopWatching = () => {
+    clearInterval(tick);
+    if (timeoutId) clearTimeout(timeoutId);
+    timeoutId = null;
+    unsub();
+  };
+
+  const armDispenseTimeout = (durationMs) => {
+    if (timeoutId) clearTimeout(timeoutId);
+
+    const waitMs = Math.max(30000, Number(durationMs || 1000) + 30000);
+
+    timeoutId = setTimeout(() => {
+      if (finished) return;
+
+      setSt(
+        "Suv berish holati tasdiqlanmagan. Qurilma javobini kuting.",
+        "var(--er)"
+      );
+
+      busy = false;
+      updateGo();
       clearInterval(tick);
+      $("bar").classList.remove("hide");
+      $("fill").style.width = "98%";
+    }, waitMs);
+  };
+
+  const unsub = onValue(refNode, s => {
+    const c = s.val();
+    if (!c || finished) return;
+
+    if (c.status === "pending") {
+      $("bar").classList.add("hide");
+      setSt("Buyurtma qurilmaga yuborildi. Qurilma kutilmoqda…");
+      return;
+    }
+
+    if (c.status === "dispensing") {
+      if (!startedAt) {
+        startedAt = Date.now();
+        armDispenseTimeout(c.duration_ms);
+      }
+
+      $("bar").classList.remove("hide");
+
+      clearInterval(tick);
+
       tick = setInterval(() => {
-        const p = Math.min(1, (Date.now() - startedAt) / (c.duration_ms || 1));
-        $("fill").style.width = (p * 100) + "%";
-        setSt("Suv berilmoqda… " + (v * p).toFixed(1) + " / " + v.toFixed(1) + " L");
-      }, 200);
-    } else {
-      clearInterval(tick); unsub(); clearTimeout(timeoutId);
-      $("fill").style.width = c.status === "completed" ? "100%" : "0%";
-      if (c.status === "completed") setSt("Tayyor: " + ((c.delivered_ml || 0) / 1000).toFixed(1) + " L berildi", "var(--ok)");
-      else if (c.status === "expired") setSt("Muddat tugadi, qayta urinib ko'ring", "var(--er)");
-      else setSt("Rad etildi: " + (c.reason || "noma'lum"), "var(--er)");
-      busy = false; updateGo();
+        const duration = Number(c.duration_ms || 1);
+        const elapsed = Date.now() - startedAt;
+        const raw = Math.min(1, elapsed / duration);
+
+        // 100% faqat "completed" statusidan keyin ko'rsatiladi.
+        const visual = Math.min(0.98, raw);
+
+        $("fill").style.width = (visual * 100) + "%";
+
+        if (raw >= 1) {
+          setSt(
+            "Suv berish yakunlanmoqda… " +
+            v.toFixed(1) + " / " + v.toFixed(1) + " L"
+          );
+        } else {
+          setSt(
+            "Suv berilmoqda… " +
+            (v * raw).toFixed(1) + " / " +
+            v.toFixed(1) + " L"
+          );
+        }
+      }, 150);
+
+      return;
+    }
+
+    finished = true;
+    stopWatching();
+
+    if (c.status === "completed") {
+      $("fill").style.width = "100%";
+      $("bar").classList.remove("hide");
+
+      setSt(
+        "Tayyor: " +
+        ((Number(c.delivered_ml) || 0) / 1000).toFixed(1) +
+        " L berildi",
+        "var(--ok)"
+      );
+
+      busy = false;
+      updateGo();
+
       setTimeout(() => $("bar").classList.add("hide"), 4000);
+
+    } else if (c.status === "expired") {
+      $("fill").style.width = "0%";
+      setSt(
+        "Buyurtma muddati tugadi. Qayta urinib ko'ring.",
+        "var(--er)"
+      );
+
+      busy = false;
+      updateGo();
+
+    } else {
+      $("fill").style.width = "0%";
+      setSt(
+        "Buyurtma rad etildi: " +
+        (c.reason || "noma'lum sabab"),
+        "var(--er)"
+      );
+
+      busy = false;
+      updateGo();
     }
   });
-
-  timeoutId = setTimeout(() => {
-    if (busy && !startedAt) {
-      setSt("Qurilma javob bermadi", "var(--er)");
-      busy = false; updateGo();
-      clearInterval(tick); unsub();
-    }
-  }, EXPIRE_MS + 5000);
 }
 
 const saved = store.get("sw_uid");
