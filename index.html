@@ -3,36 +3,34 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SMART WATER — Online Dispenser</title>
+<title>SMART WATER</title>
 <style>
 :root{--bg:#f4f7fb;--card:#fff;--tx:#12202f;--mut:#6b7a8c;--ac:#0a7cff;--ok:#12a150;--er:#d93025;--bd:#dbe3ec}
 @media(prefers-color-scheme:dark){:root{--bg:#0d141c;--card:#16202b;--tx:#e8eef5;--mut:#8b9bad;--bd:#26364a}}
 *{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--tx);display:flex;justify-content:center;padding:16px}
-.card{width:100%;max-width:400px;background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:20px}
+.card{width:100%;max-width:410px;background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:20px}
 h1{font-size:18px;margin:0 0 4px;letter-spacing:1px}.mut{color:var(--mut);font-size:13px}
 input{width:100%;padding:12px;margin:6px 0;border:1px solid var(--bd);border-radius:10px;background:transparent;color:var(--tx);font-size:16px}
 button{padding:12px;border:1px solid var(--bd);border-radius:10px;background:transparent;color:var(--tx);font-size:16px;cursor:pointer}
 button.main{width:100%;background:var(--ac);color:#fff;border:0;margin-top:10px;font-weight:600}
 button:disabled{opacity:.45;cursor:not-allowed}button.sel{border-color:var(--ac);color:var(--ac)}
 .row{display:flex;gap:8px;margin:10px 0}.row button{flex:1}
-.bal{font-size:36px;font-weight:700;text-align:center;margin:14px 0 4px}
-.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--er);margin-right:6px}.dot.on{background:var(--ok)}
-.bar{height:12px;background:var(--bd);border-radius:6px;overflow:hidden;margin:8px 0}.bar i{display:block;height:100%;width:0;background:var(--ac)}
-#st{margin-top:12px;min-height:22px;font-weight:600}.hide{display:none}.link{background:none;border:0;color:var(--mut);font-size:13px;padding:4px 0}
+.bal{font-size:36px;font-weight:700;text-align:center;margin:14px 0 4px}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--er);margin-right:6px}.dot.on{background:var(--ok)}
+.bar{height:12px;background:var(--bd);border-radius:6px;overflow:hidden;margin:10px 0}.bar i{display:block;height:100%;width:0;background:var(--ac)}
+.state{padding:8px 10px;border:1px solid var(--bd);border-radius:10px;margin:10px 0;font-size:13px}.hide{display:none}.link{background:none;border:0;color:var(--mut);font-size:13px;padding:4px 0}
 </style>
 </head>
 <body>
 <div class="card">
   <h1>SMART WATER</h1>
   <div class="mut"><span class="dot" id="dot"></span><span id="dev">Qurilma tekshirilmoqda…</span></div>
+  <div class="state"><span id="deviceState">Holat tekshirilmoqda…</span></div>
 
   <div id="login">
     <form id="authForm" novalidate>
-      <div class="row">
-        <button id="tabL" class="sel" type="button">Kirish</button><button id="tabR" type="button">Ro'yxatdan o'tish</button>
-      </div>
-      <p class="mut" id="hint">Karta raqami (UID) va PIN kiriting</p>
-      <input id="uid" placeholder="Karta UID (masalan A1B2C3D4)" autocapitalize="characters" autocomplete="off">
+      <div class="row"><button id="tabL" class="sel" type="button">Kirish</button><button id="tabR" type="button">Ro'yxatdan o'tish</button></div>
+      <p class="mut" id="hint">Karta UID va PIN kiriting</p>
+      <input id="uid" placeholder="Karta UID (A1B2C3D4)" autocapitalize="characters" autocomplete="off">
       <input id="pin" placeholder="PIN (4-6 raqam)" type="password" inputmode="numeric" autocomplete="off">
       <input id="pin2" class="hide" placeholder="PINni takrorlang" type="password" inputmode="numeric" autocomplete="off">
       <button class="main" id="loginBtn" type="submit">Kirish</button>
@@ -44,13 +42,11 @@ button:disabled{opacity:.45;cursor:not-allowed}button.sel{border-color:var(--ac)
     <div class="bal" id="bal">— L</div>
     <div class="mut" style="text-align:center">Balans (<span id="who"></span>)</div>
     <p style="margin:16px 0 0">Qancha suv olasiz?</p>
-    <div class="row" id="presets">
-      <button data-v="0.2" type="button">0.2 L</button><button data-v="0.5" type="button">0.5 L</button><button data-v="1" type="button">1 L</button><button data-v="2" type="button">2 L</button>
-    </div>
+    <div class="row" id="presets"><button data-v="0.2" type="button">0.2 L</button><button data-v="0.5" type="button">0.5 L</button><button data-v="1" type="button">1 L</button><button data-v="2" type="button">2 L</button></div>
     <input id="custom" type="number" min="0.1" max="5" step="0.1" inputmode="decimal" placeholder="Boshqa: ___ L">
     <button class="main" id="go" type="button">SUV OLISH</button>
     <div class="bar hide" id="bar"><i id="fill"></i></div>
-    <div id="st"></div>
+    <div id="st" style="margin-top:12px;min-height:22px;font-weight:600"></div>
     <button class="link" id="out" type="button">Chiqish</button>
   </div>
 </div>
@@ -60,503 +56,64 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/fireba
 import { getDatabase, ref, onValue, get, set, push, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, deleteUser } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyC-Cm4rAlbDmoDs3lpYyRTTOVRlRwbPvMw",
-  authDomain: "bakk-9ff13.firebaseapp.com",
-  databaseURL: "https://bakk-9ff13-default-rtdb.firebaseio.com",
-  projectId: "bakk-9ff13",
-  storageBucket: "bakk-9ff13.firebasestorage.app",
-  messagingSenderId: "454857289201",
-  appId: "1:454857289201:web:62bf1b0128bc3189dc2850",
-  measurementId: "G-KNE0NX3VSC"
-};
+const firebaseConfig={apiKey:"AIzaSyC-Cm4rAlbDmoDs3lpYyRTTOVRlRwbPvMw",authDomain:"bakk-9ff13.firebaseapp.com",databaseURL:"https://bakk-9ff13-default-rtdb.firebaseio.com",projectId:"bakk-9ff13",storageBucket:"bakk-9ff13.firebasestorage.app",messagingSenderId:"454857289201",appId:"1:454857289201:web:62bf1b0128bc3189dc2850",measurementId:"G-KNE0NX3VSC"};
+const app=initializeApp(firebaseConfig),db=getDatabase(app),auth=getAuth(app),$=id=>document.getElementById(id);
+const DEVICE_ID="SW001",MAX_L=5,COMMAND_KEY="sw_cmd_v6";
+let uid=null,pin="",balL=0,offset=0,lastSeen=0,deviceState={mode:"offline",queue_depth:0},busy=false,vol=0,cmdUnsub=null,tick=null,activePath=null,offs=[];
+const store={get:k=>{try{return localStorage.getItem(k)}catch{return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch{}},del:k=>{try{localStorage.removeItem(k)}catch{}}};
+const setSt=(t,c)=>{$("st").textContent=t;$('st').style.color=c||'var(--tx)'};
+const commandRef=id=>ref(db,`devices/${DEVICE_ID}/commands/${id}`);
 
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-const auth = getAuth(app);
-const $ = id => document.getElementById(id);
+onValue(ref(db,".info/serverTimeOffset"),s=>{offset=Number(s.val())||0;renderDev()});
+onValue(ref(db,`devices/${DEVICE_ID}/last_seen`),s=>{const n=Number(s.val());lastSeen=Number.isFinite(n)&&n>0?n:0;renderDev()},e=>{console.error(e);lastSeen=0;renderDev()});
+onValue(ref(db,`devices/${DEVICE_ID}/state`),s=>{deviceState=s.val()||{mode:'offline',queue_depth:0};renderDeviceState()});
+setInterval(renderDev,3000);
 
-const DEVICE_ID = "SW001";
-const MAX_L = 5;
-const EXPIRE_MS = 120000;
-const COMMAND_KEY = "sw_cmd";
+function renderDev(){const on=!!lastSeen&&(Date.now()+offset-lastSeen)<25000;$("dot").className='dot'+(on?' on':'');$("dev").textContent=on?'Qurilma online':'Qurilma offline';renderDeviceState();updateGo()}
+function renderDeviceState(){const m=deviceState.mode||'offline',q=Number(deviceState.queue_depth||0);$("deviceState").textContent=m==='running'?`Suv berilmoqda • navbat: ${q}`:m==='queued'?`Navbat: ${q}`:m==='idle'?'Tayyor':'Qurilma holati: '+m}
+function updateGo(){const online=$("dot").classList.contains('on'),v=getVol();$("go").disabled=busy||!online||!(v>0&&v<=Math.min(MAX_L,balL))}
+function getVol(){const c=parseFloat($("custom").value);return c>0?Math.round(c*10)/10:vol}
+document.querySelectorAll('#presets button').forEach(b=>b.onclick=()=>{vol=+b.dataset.v;$("custom").value='';document.querySelectorAll('#presets button').forEach(x=>x.classList.toggle('sel',x===b));updateGo()});
+$("custom").oninput=()=>{vol=0;document.querySelectorAll('#presets button').forEach(x=>x.classList.remove('sel'));updateGo()};
 
-let uid = null, pin = "", balL = 0, offset = 0, lastSeen = 0, busy = false, vol = 0;
-let offs = [], cmdRef = null, tick = null, cmdUnsub = null, activeCmdId = null;
+let mode='login';
+function setMode(m){mode=m;$("pin2").classList.toggle('hide',m!=='reg');$("loginBtn").textContent=m==='reg'?'Ro\'yxatdan o\'tish':'Kirish';$("tabL").classList.toggle('sel',m==='login');$("tabR").classList.toggle('sel',m==='reg');$("hint").textContent=m==='reg'?"Avval kartani qurilmaga tuting va UID ni oling.":"Karta UID va PIN kiriting";$('lerr').textContent=''}
+$("tabL").onclick=()=>setMode('login');$("tabR").onclick=()=>setMode('reg');
 
-const store = {
-  get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
-  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} },
-  del(k){ try{ localStorage.removeItem(k); }catch(e){} }
-};
+$("authForm").addEventListener('submit',async e=>{e.preventDefault();const u=$("uid").value.trim().toUpperCase(),p=$("pin").value.trim(),err=t=>$("lerr").textContent=t;if(!/^[0-9A-F]{8}$/.test(u))return err('UID 8 ta HEX belgi bo\'lishi kerak');if(!/^[0-9]{4,6}$/.test(p))return err('PIN 4-6 ta raqam bo\'lishi kerak');if(mode==='reg'&&$("pin2").value.trim()!==p)return err('PIN lar mos kelmadi');$("loginBtn").disabled=true;const email=u.toLowerCase()+'@smartwater.app',pw='SW-'+p+'-water!';try{
+  if(mode==='reg'){
+    const pc=await get(ref(db,`pending_cards/${u}`));if(!pc.exists())return err('Avval kartani qurilmaga tuting');let created=false;try{await createUserWithEmailAndPassword(auth,email,pw);created=true}catch(x){if(x.code==='auth/email-already-in-use')await signInWithEmailAndPassword(auth,email,pw);else throw x}
+    const ur=ref(db,`users/${u}`);if((await get(ur)).exists()){await signOut(auth);return err('Bu karta allaqachon ro\'yxatdan o\'tgan')};try{await set(ur,{balance_ml:0,pin:p})}catch(x){if(created&&auth.currentUser)try{await deleteUser(auth.currentUser)}catch{};throw x};uid=u;pin=p;store.set('sw_uid',u);startApp();setSt('Ro\'yxatdan o\'tdingiz','var(--ok)')
+  }else{await signInWithEmailAndPassword(auth,email,pw);const s=await get(ref(db,`users/${u}`));if(!s.exists()){await signOut(auth);return err('Foydalanuvchi topilmadi')};uid=u;pin=p;store.set('sw_uid',u);startApp()}
+}catch(x){console.error('SMART WATER auth',x);const c=x?.code||'';err(c==='auth/invalid-credential'||c==='auth/wrong-password'||c==='auth/user-not-found'?'UID yoki PIN xato':(c==='PERMISSION_DENIED'||c==='permission-denied'?'Firebase Rules ruxsat bermadi':(x?.message||'Kirish xatosi')))}finally{$("loginBtn").disabled=false}});
 
-const setSt = (t, c) => { $("st").textContent = t; $("st").style.color = c || "var(--tx)"; };
+function clearWatch(){if(cmdUnsub)cmdUnsub();cmdUnsub=null;clearInterval(tick);tick=null;activePath=null}
+function terminal(){clearWatch();store.del(COMMAND_KEY);busy=false;updateGo()}
 
-onValue(ref(db, ".info/serverTimeOffset"), s => {
-  const n = Number(s.val());
-  offset = Number.isFinite(n) ? n : 0;
-  renderDev();
-}, err => console.error("SMART WATER server offset:", err));
+async function resumeActive(){if(!uid)return;const id=store.get(COMMAND_KEY);if(!id||!id.length)return;try{const s=await get(commandRef(id));if(!s.exists()){store.del(COMMAND_KEY);return}const c=s.val()||{};if(String(c.user_id||'')!==uid){store.del(COMMAND_KEY);return}watch(id,Number(c.volume_ml||0)/1000)}catch(e){console.warn('Old command/session cleared',e);store.del(COMMAND_KEY);busy=false;updateGo()}}
 
-onValue(
-  ref(db, "devices/" + DEVICE_ID + "/last_seen"),
-  s => {
-    const n = Number(s.val());
-    lastSeen = Number.isFinite(n) && n > 0 ? n : 0;
-    renderDev();
-  },
-  err => {
-    console.error("SMART WATER device status read error:", err);
-    lastSeen = 0;
-    renderDev();
-  }
-);
-setInterval(renderDev, 3000);
+function startApp(){$("login").classList.add('hide');$("app").classList.remove('hide');$("who").textContent=uid;setSt('Tayyor');offs.forEach(f=>f());offs=[];offs.push(onValue(ref(db,`users/${uid}/balance_ml`),s=>{const ml=Number(s.val());if(Number.isFinite(ml)){balL=ml/1000;$("bal").textContent=balL.toFixed(1)+' L';updateGo()}}));resumeActive()}
 
-function renderDev(){
-  const on = lastSeen && (Date.now() + offset - lastSeen) < 25000;
-  $("dot").className = "dot" + (on ? " on" : "");
-  $("dev").textContent = on ? "Qurilma online" : "Qurilma offline";
-  updateGo();
+$("go").onclick=async()=>{const v=getVol();if(!(v>0&&v<=Math.min(MAX_L,balL)))return;busy=true;updateGo();setSt('Buyurtma yaratilmoqda…');try{if(!auth.currentUser)throw new Error('Sessiya tugagan');if((auth.currentUser.email||'').toLowerCase()!==uid.toLowerCase()+'@smartwater.app')throw new Error('Auth egasi mos emas');const cr=push(ref(db,`devices/${DEVICE_ID}/commands`)),id=cr.key;if(!id)throw new Error('Command ID yaratilmadi');await set(cr,{source:'web',device_id:DEVICE_ID,user_id:uid,volume_ml:Math.round(v*1000),status:'queued',created_at:serverTimestamp()});store.set(COMMAND_KEY,id);watch(id,v)}catch(e){console.error('SMART WATER command',e);busy=false;updateGo();setSt(e?.code==='PERMISSION_DENIED'?'Firebase Rules ruxsat bermadi':'Buyruq yuborilmadi: '+(e?.message||''),'var(--er)')}};
+
+function watch(id,requestedL){clearWatch();activePath=commandRef(id);store.set(COMMAND_KEY,id);busy=true;updateGo();let finished=false;
+  const progress=p=>{$("bar").classList.remove('hide');$("fill").style.width=Math.max(0,Math.min(100,p))+'%'};
+  const renderRunning=c=>{const d=Math.max(1,Number(c.duration_ms||1)),st=Number(c.started_at||0),now=Date.now()+offset,raw=st?Math.max(0,Math.min(1,(now-st)/d)):0;progress(raw*98);const target=Number(c.volume_ml||requestedL*1000)/1000;setSt(raw>=1?`Nasos yakunlanmoqda… ${target.toFixed(1)} L`:`Suv berilmoqda… ${(target*raw).toFixed(1)} / ${target.toFixed(1)} L`)};
+  cmdUnsub=onValue(activePath,s=>{const c=s.val();if(!c||finished)return;const st=c.status||'';
+    if(st==='queued'){busy=true;setSt('Buyurtma qurilmaga yuborildi…');updateGo();return}
+    if(st==='queued_device'){busy=true;setSt('Qurilma navbatiga qo\'shildi…');updateGo();return}
+    if(st==='running'){busy=true;renderRunning(c);clearInterval(tick);tick=setInterval(()=>renderRunning(c),150);return}
+    finished=true;clearInterval(tick);tick=null;
+    if(st==='completed'){progress(100);const ml=(Number(c.delivered_ml)||0)/1000;setSt(`Tayyor: ${ml.toFixed(1)} L berildi`,'var(--ok)');terminal();setTimeout(()=>$("bar").classList.add('hide'),3500);return}
+    if(st==='interrupted'){progress(0);setSt('Qurilma qayta ishga tushgan. Buyurtma qayta bajarilmadi.','var(--er)');terminal();return}
+    progress(0);setSt('Buyurtma rad etildi: '+(c.reason||'noma\'lum sabab'),'var(--er)');terminal();
+  },e=>{console.warn('Command read',e);setSt('Buyruq holati o\'qilmoqda…')});
 }
 
-function updateGo(){
-  const online = $("dot").classList.contains("on");
-  const v = getVol();
-  $("go").disabled = busy || !online || !(v > 0 && v <= Math.min(MAX_L, balL));
-}
-function getVol(){
-  const c = parseFloat($("custom").value);
-  if (c > 0) return Math.round(c * 10) / 10;
-  return vol;
-}
+$("out").onclick=async()=>{clearWatch();offs.forEach(f=>f());offs=[];try{await signOut(auth)}catch{}uid=null;pin='';store.del('sw_uid');$("app").classList.add('hide');$("login").classList.remove('hide');$("uid").value='';$("pin").value='';$("pin2").value='';setMode('login')};
 
-document.querySelectorAll("#presets button").forEach(b => b.onclick = () => {
-  vol = +b.dataset.v; $("custom").value = "";
-  document.querySelectorAll("#presets button").forEach(x => x.classList.toggle("sel", x === b));
-  updateGo();
-});
-$("custom").oninput = () => {
-  vol = 0; document.querySelectorAll("#presets button").forEach(x => x.classList.remove("sel")); updateGo();
-};
-
-let mode = "login";
-function setMode(m){
-  mode = m; $("pin2").classList.toggle("hide", m !== "reg");
-  $("loginBtn").textContent = m === "reg" ? "Ro'yxatdan o'tish" : "Kirish";
-  $("tabL").classList.toggle("sel", m === "login"); $("tabR").classList.toggle("sel", m === "reg");
-  $("hint").textContent = m === "reg"
-    ? "Avval kartani qurilmaga tuting: UID displeyda chiqadi. Shu UID va o'zingiz o'ylagan PIN ni kiriting."
-    : "Karta raqami (UID) va PIN kiriting";
-  $("lerr").textContent = "";
-}
-$("tabL").onclick = () => setMode("login");
-$("tabR").onclick = () => setMode("reg");
-
-$("authForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const u = $("uid").value.trim().toUpperCase();
-  const p = $("pin").value.trim();
-  const err = t => $("lerr").textContent = t;
-
-  if (!u) return err("UID kiriting");
-  if (!/^[0-9A-F]{8}$/.test(u)) return err("UID 8 ta belgi (0-9, A-F) bo'lishi kerak");
-  if (!p) return err("PIN kiriting");
-  if (!/^[0-9]{4,6}$/.test(p)) return err("PIN 4-6 ta raqam bo'lishi kerak");
-
-  if (mode === "reg") {
-    const p2 = $("pin2").value.trim();
-    if (!p2) return err("PINni takrorlang");
-    if (p !== p2) return err("PIN lar mos kelmadi");
-  }
-
-  err("");
-  $("loginBtn").disabled = true;
-
-  // Firebase Auth paroli uchun ichki parol hosil qilinadi.
-  // Foydalanuvchi PIN sifatida odatdagi 4-6 raqamli PINni ishlatadi.
-  const authEmail = u.toLowerCase() + "@smartwater.app";
-  const authPassword = "SW-" + p + "-water!";
-
-  try {
-    if (mode === "reg") {
-      // Faqat qurilmada ko'rilgan karta ro'yxatdan o'tishi mumkin.
-      const pc = await get(ref(db, "pending_cards/" + u));
-      if (!pc.exists()) {
-        return err("Avval kartani qurilmaga tuting, so'ng UID ni tekshiring");
-      }
-
-      let createdNow = false;
-      try {
-        await createUserWithEmailAndPassword(auth, authEmail, authPassword);
-        createdNow = true;
-      } catch (e) {
-        if (e && e.code === "auth/email-already-in-use") {
-          await signInWithEmailAndPassword(auth, authEmail, authPassword);
-        } else {
-          throw e;
-        }
-      }
-
-      const userRef = ref(db, "users/" + u);
-      const currentUserSnap = await get(userRef);
-
-      if (currentUserSnap.exists()) {
-        await signOut(auth);
-        return err("Bu karta allaqachon ro'yxatdan o'tgan. Kirish bo'limidan kiring");
-      }
-
-      try {
-        await set(userRef, { balance_ml: 0, pin: p });
-      } catch (e) {
-        if (createdNow && auth.currentUser) {
-          try { await deleteUser(auth.currentUser); } catch (_) {}
-        }
-        throw e;
-      }
-
-      uid = u;
-      pin = p;
-      store.set("sw_uid", u);
-      startApp();
-      setSt("Ro'yxatdan o'tdingiz. Balans 0 L: to'ldirish uchun administratorga murojaat qiling", "var(--ok)");
-
-    } else {
-      await signInWithEmailAndPassword(auth, authEmail, authPassword);
-
-      const userSnap = await get(ref(db, "users/" + u));
-      if (!userSnap.exists()) {
-        await signOut(auth);
-        return err("Karta uchun foydalanuvchi ma'lumoti topilmadi");
-      }
-
-      const userData = userSnap.val();
-      if (!userData.pin) {
-        await signOut(auth);
-        return err("PIN ro'yxati noto'g'ri. Administratorga murojaat qiling");
-      }
-
-      uid = u;
-      pin = p;
-      store.set("sw_uid", u);
-      startApp();
-    }
-  } catch (e) {
-    console.error("SMART WATER auth error:", e);
-    const code = e && e.code ? e.code : "";
-
-    if (code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found") {
-      err("UID yoki PIN xato");
-    } else if (code === "auth/operation-not-allowed") {
-      err("Firebase Authentication > Sign-in method bo'limida Email/Password ni yoqing");
-    } else if (code === "PERMISSION_DENIED" || code === "permission-denied") {
-      err("Firebase Rules ruxsat bermadi. Realtime Database Rules ni tekshiring");
-    } else if (code === "auth/too-many-requests") {
-      err("Juda ko'p urinish. Bir ozdan keyin qayta urinib ko'ring");
-    } else {
-      err((mode === "reg" ? "Ro'yxatdan o'tib bo'lmadi: " : "Kirish xatosi: ") + (e && e.message ? e.message : "noma'lum xato"));
-    }
-  } finally {
-    $("loginBtn").disabled = false;
-  }
-});
-
-$("out").onclick = async () => {
-  offs.forEach(f => f());
-  offs = [];
-  clearCommandWatch();
-  try { await signOut(auth); } catch(e) { console.error(e); }
-  uid = null; pin = ""; store.del("sw_uid");
-  $("app").classList.add("hide"); $("login").classList.remove("hide"); $("pin").value = "";
-  $("uid").value = ""; $("pin2").value = ""; $("lerr").textContent = "";
-  setMode("login");
-};
-
-
-function clearCommandWatch(){
-  if (typeof cmdUnsub === "function") cmdUnsub();
-  cmdUnsub = null;
-  clearInterval(tick);
-  tick = null;
-  cmdRef = null;
-}
-
-function terminalCommandCleanup(){
-  clearCommandWatch();
-  activeCmdId = null;
-  store.del(COMMAND_KEY);
-}
-
-async function resumeActiveCommand(){
-  if (!uid) return;
-  const id = store.get(COMMAND_KEY);
-  if (!id || !/^[A-Za-z0-9_-]{10,40}$/.test(id)) return;
-
-  try {
-    const s = await get(ref(db, "commands/" + id));
-    if (!s.exists()) { store.del(COMMAND_KEY); activeCmdId = null; busy = false; updateGo(); return; }
-    const c = s.val() || {};
-    if (String(c.user_id || "") !== uid) { store.del(COMMAND_KEY); activeCmdId = null; busy = false; updateGo(); return; }
-
-    if (["completed","rejected","expired"].includes(c.status)) {
-      store.del(COMMAND_KEY);
-      activeCmdId = null;
-      busy = false;
-      updateGo();
-      return;
-    }
-
-    activeCmdId = id;
-    cmdRef = ref(db, "commands/" + id);
-    busy = true;
-    updateGo();
-    watch(cmdRef, Number(c.volume || 0), id);
-  } catch (e) {
-    // A stale command from a previous session must never block the UI.
-    // With strict RTDB Rules the current user may legitimately lose access
-    // to an old command after it is finalized, so clear only the local key.
-    if (e && (e.code === "PERMISSION_DENIED" || e.code === "permission-denied")) {
-      store.del(COMMAND_KEY);
-      activeCmdId = null;
-      busy = false;
-      updateGo();
-      setSt("Tayyor");
-      return;
-    }
-    console.error("SMART WATER command resume:", e);
-  }
-}
-
-function startApp(){
-  $("login").classList.add("hide");
-  $("app").classList.remove("hide");
-  $("who").textContent = uid;
-  setSt("Tayyor");
-
-  offs.forEach(f => f());
-  offs = [];
-
-  const r = ref(db, "users/" + uid + "/balance_ml");
-  const unsub = onValue(r, s => {
-    const ml = Number(s.val());
-    balL = Number.isFinite(ml) ? ml / 1000 : 0;
-    $("bal").textContent = balL.toFixed(1) + " L";
-    updateGo();
-  }, e => {
-    console.error("SMART WATER balance listener:", e);
-    setSt("Balansni Firebase'dan o'qib bo'lmadi", "var(--er)");
-  });
-  offs.push(unsub);
-
-  resumeActiveCommand();
-}
-
-$("go").onclick = async () => {
-  const v = getVol();
-  if (!(v > 0 && v <= Math.min(MAX_L, balL))) return;
-
-  busy = true;
-  updateGo();
-  setSt("Buyurtma yuborilmoqda…");
-
-  try {
-    if (!auth.currentUser) throw new Error("AUTH_REQUIRED");
-    if (!/^[0-9]{4,6}$/.test(pin)) throw new Error("PIN_SESSION_MISSING");
-
-    const ownerEmail = (auth.currentUser.email || "").toLowerCase();
-    if (ownerEmail !== uid.toLowerCase() + "@smartwater.app") {
-      throw new Error("AUTH_OWNER_MISMATCH");
-    }
-
-    cmdRef = push(ref(db, "commands"));
-    const id = cmdRef.key;
-    if (!id) throw new Error("COMMAND_ID_MISSING");
-
-    await set(cmdRef, {
-      device_id: DEVICE_ID,
-      user_id: uid,
-      volume: v,
-      pin: pin,
-      status: "pending",
-      created_at: serverTimestamp()
-    });
-
-    activeCmdId = id;
-    store.set(COMMAND_KEY, id);
-    watch(cmdRef, v, id);
-  } catch (e) {
-    console.error("SMART WATER command error:", e);
-    busy = false;
-    updateGo();
-
-    if (e?.message === "AUTH_REQUIRED") {
-      setSt("Sessiya tugagan. Qayta kiring.", "var(--er)");
-    } else if (e?.message === "PIN_SESSION_MISSING") {
-      setSt("PIN sessiyada topilmadi. Qayta kiring.", "var(--er)");
-    } else if (e?.message === "AUTH_OWNER_MISMATCH") {
-      setSt("Auth sessiyasi bu kartaga tegishli emas. Qayta kiring.", "var(--er)");
-    } else if (e?.code === "PERMISSION_DENIED" || e?.code === "permission-denied") {
-      setSt("Firebase Rules buyruqqa ruxsat bermadi.", "var(--er)");
-    } else {
-      setSt("Xato: buyruq yuborilmadi", "var(--er)");
-    }
-  }
-};
-
-function watch(refNode, requestedL, id){
-  clearCommandWatch();
-  cmdRef = refNode;
-  activeCmdId = id || refNode.key || null;
-  if (activeCmdId) store.set(COMMAND_KEY, activeCmdId);
-
-  let finished = false;
-
-  const setProgress = pct => {
-    $("bar").classList.remove("hide");
-    $("fill").style.width = Math.max(0, Math.min(100, pct)) + "%";
-  };
-
-  const updateDispensingView = c => {
-    const duration = Math.max(1, Number(c.duration_ms || 1));
-    const startedAt = Number(c.started_at || 0);
-    const now = Date.now() + offset;
-    const raw = startedAt > 0 ? Math.max(0, Math.min(1, (now - startedAt) / duration)) : 0;
-    setProgress(raw >= 1 ? 98 : raw * 98);
-
-    const target = Number(c.volume || requestedL || 0);
-    if (raw >= 1) {
-      setSt("Suv berish yakunlanmoqda… " + target.toFixed(1) + " L");
-    } else {
-      setSt("Suv berilmoqda… " + (target * raw).toFixed(1) + " / " + target.toFixed(1) + " L");
-    }
-  };
-
-  cmdUnsub = onValue(refNode, s => {
-    const c = s.val();
-    if (!c || finished) return;
-
-    if (c.status === "pending") {
-      busy = true;
-      $("bar").classList.add("hide");
-      setSt("Buyurtma qurilmaga yuborildi. Qurilma kutilmoqda…");
-      updateGo();
-      return;
-    }
-
-    if (c.status === "dispensing") {
-      busy = true;
-      updateGo();
-      clearInterval(tick);
-      updateDispensingView(c);
-      tick = setInterval(() => updateDispensingView(c), 150);
-      return;
-    }
-
-    finished = true;
-    clearInterval(tick);
-    tick = null;
-    clearCommandWatch();
-
-    if (c.status === "completed") {
-      setProgress(100);
-      const delivered = (Number(c.delivered_ml) || 0) / 1000;
-      setSt("Tayyor: " + delivered.toFixed(1) + " L berildi", "var(--ok)");
-      busy = false;
-      terminalCommandCleanup();
-      updateGo();
-
-      get(ref(db, "users/" + uid + "/balance_ml"))
-        .then(s2 => {
-          const ml = Number(s2.val());
-          if (Number.isFinite(ml)) {
-            balL = ml / 1000;
-            $("bal").textContent = balL.toFixed(1) + " L";
-            updateGo();
-          }
-        })
-        .catch(e => console.error("SMART WATER balance refresh:", e));
-
-      setTimeout(() => $("bar").classList.add("hide"), 4000);
-      return;
-    }
-
-    if (c.status === "expired") {
-      setProgress(0);
-      setSt("Buyurtma muddati tugadi. Qayta urinib ko‘ring.", "var(--er)");
-    } else {
-      setProgress(0);
-      setSt("Buyurtma rad etildi: " + (c.reason || "noma'lum sabab"), "var(--er)");
-    }
-
-    busy = false;
-    terminalCommandCleanup();
-    updateGo();
-  }, e => {
-    console.error("SMART WATER command listener:", e);
-    busy = true;
-    updateGo();
-    setSt("Buyruq holatini o‘qib bo‘lmadi. Kutish davom etmoqda…", "var(--er)");
-  });
-}
-
-const saved = store.get("sw_uid");
-if (saved) $("uid").value = saved;
-
-let restoringSession = false;
-
-async function restoreAuthSession(user) {
-  if (restoringSession) return;
-  if (!user) return;
-
-  const email = (user.email || "").toLowerCase();
-  const suffix = "@smartwater.app";
-  if (!email.endsWith(suffix)) return;
-
-  const restoredUid = email.slice(0, -suffix.length).toUpperCase();
-  if (!/^[0-9A-F]{8}$/.test(restoredUid)) return;
-
-  // Agar login jarayonining o'zi allaqachon pinni o'rnatgan bo'lsa,
-  // qayta o'qib, ikkinchi listener yaratmaymiz.
-  if (uid === restoredUid && pin) {
-    if ($("app").classList.contains("hide")) startApp();
-    return;
-  }
-
-  restoringSession = true;
-  try {
-    const snap = await get(ref(db, "users/" + restoredUid));
-    if (!snap.exists()) {
-      console.warn("SMART WATER: Auth bor, lekin RTDB user topilmadi:", restoredUid);
-      return;
-    }
-
-    const data = snap.val() || {};
-    const savedPin = String(data.pin || "");
-
-    if (!/^[0-9]{4,6}$/.test(savedPin)) {
-      console.warn("SMART WATER: RTDB PIN noto'g'ri:", restoredUid);
-      return;
-    }
-
-    uid = restoredUid;
-    pin = savedPin;
-    $("uid").value = restoredUid;
-    $("pin").value = savedPin;
-    store.set("sw_uid", restoredUid);
-
-    startApp();
-  } catch (e) {
-    console.error("SMART WATER session restore error:", e);
-    setSt("Sessiyani tiklab bo'lmadi. Qayta kiring.", "var(--er)");
-  } finally {
-    restoringSession = false;
-  }
-}
-
-onAuthStateChanged(auth, user => {
-  if (!user) return;
-  restoreAuthSession(user);
-});
+const saved=store.get('sw_uid');if(saved)$("uid").value=saved;let restoring=false;
+onAuthStateChanged(auth,user=>{if(!user||restoring)return;const email=(user.email||'').toLowerCase(),suffix='@smartwater.app';if(!email.endsWith(suffix))return;const u=email.slice(0,-suffix.length).toUpperCase();if(!/^[0-9A-F]{8}$/.test(u))return;restoring=true;get(ref(db,`users/${u}`)).then(s=>{if(!s.exists())return;uid=u;pin=String(s.val().pin||'');$("uid").value=u;$("pin").value=pin;store.set('sw_uid',u);startApp()}).catch(console.error).finally(()=>restoring=false)});
 </script>
 </body>
 </html>
